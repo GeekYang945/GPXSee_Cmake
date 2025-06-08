@@ -46,8 +46,8 @@ static QList<MapData*> overlays(const QString &fileName)
 			if (data->isValid())
 				list.append(data);
 			else {
-				qWarning("%s: %s", qPrintable(data->fileName()),
-				  qPrintable(data->errorString()));
+				qWarning("%s: %s", qUtf8Printable(data->fileName()),
+				  qUtf8Printable(data->errorString()));
 				delete data;
 			}
 		} else
@@ -276,7 +276,7 @@ double IMGMap::elevation(const Coordinates &c)
 	if (d->hasDEM()) {
 		QList<MapData::Elevation> tiles;
 
-		d->elevations(RectC(c, Coordinates(c.lon() + DELTA, c.lat() - DELTA)),
+		d->elevations(0, RectC(c, Coordinates(c.lon() + DELTA, c.lat() - DELTA)),
 		  d->zooms().max(), &tiles);
 		DEMTree tree(tiles);
 

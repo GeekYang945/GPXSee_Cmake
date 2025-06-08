@@ -3,6 +3,8 @@
 #include <QUrl>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QPainter>
+#include <QtMath>
 #include "common/programpaths.h"
 #include "style.h"
 
@@ -83,7 +85,7 @@ const Style::Menu::Layer *Style::Menu::findLayer(const QString &id) const
 		if (_layers.at(i).id() == id)
 			return &_layers.at(i);
 
-	qWarning("%s: layer not found", qPrintable(id));
+	qWarning("%s: layer not found", qUtf8Printable(id));
 
 	return 0;
 }
@@ -114,18 +116,25 @@ QSet<QString> Style::Menu::cats() const
 }
 
 Style::Rule::Filter::Filter(const MapData &data, const QList<QByteArray> &keys,
-  const QList<QByteArray> &vals) : _neg(false)
+  const QList<QByteArray> &vals) : _neg(false), _excl(false)
 {
 	_keys = keyList(data, keys);
 
 	QList<QByteArray> vc(vals);
 	if (vc.removeAll("~"))
 		_neg = true;
+	if (vc.removeAll("-"))
+		_excl = true;
 	_vals = valList(vc);
 }
 
-bool Style::Rule::match(const QVector<MapData::Tag> &tags) const
+bool Style::Rule::match(bool path, const QVector<MapData::Tag> &tags) const
 {
+	Type type = path ? WayType : NodeType;
+
+	if (!(_type == Rule::AnyType || _type == type))
+		return false;
+
 	for (int i = 0; i < _filters.size(); i++)
 		if (!_filters.at(i).match(tags))
 			return false;
@@ -133,7 +142,7 @@ bool Style::Rule::match(const QVector<MapData::Tag> &tags) const
 	return true;
 }
 
-bool Style::Rule::match(bool closed, const QVector<MapData::Tag> &tags) const
+bool Style::Rule::matchPath(bool closed, const QVector<MapData::Tag> &tags) const
 {
 	Closed cl = closed ? YesClosed : NoClosed;
 
@@ -388,8 +397,8 @@ void Style::circle(QXmlStreamReader &reader, qreal baseStrokeWidth,
 	reader.skipCurrentElement();
 }
 
-void Style::text(QXmlStreamReader &reader, const MapData &data, const Rule &rule,
-  QList<QList<TextRender>*> &lists)
+void Style::text(QXmlStreamReader &reader, const MapData &data,
+  const Rule &rule, bool line)
 {
 	TextRender ri(rule);
 	const QXmlStreamAttributes &attr = reader.attributes();
@@ -455,6 +464,10 @@ void Style::text(QXmlStreamReader &reader, const MapData &data, const Rule &rule
 	}
 	if (attr.hasAttribute("symbol-id"))
 		ri._symbolId = attr.value("symbol-id").toString();
+	if (line && attr.hasAttribute("text-orientation")) {
+		if (attr.value("text-orientation").toString() == "auto_down")
+			ri._shield = true;
+	}
 
 	ri._font.setFamily(fontFamily);
 	ri._font.setPixelSize(fontSize);
@@ -462,21 +475,24 @@ void Style::text(QXmlStreamReader &reader, const MapData &data, const Rule &rule
 	ri._font.setItalic(italic);
 	ri._font.setCapitalization(capitalization);
 
-	if (fontSize)
-		for (int i = 0; i < lists.size(); i++)
-			lists[i]->append(ri);
+	if (fontSize) {
+		if (line)
+			_pathLabels.append(ri);
+		else
+			_labels.append(ri);
+	}
 
 	reader.skipCurrentElement();
 }
 
 void Style::symbol(QXmlStreamReader &reader, const QString &dir, qreal ratio,
-  const Rule &rule, QList<Symbol> &list)
+  const Rule &rule, bool line)
 {
 	Symbol ri(rule);
 	const QXmlStreamAttributes &attr = reader.attributes();
 	QString file;
 	int height = 0, width = 0, percent = 100;
-	bool ok;
+	bool ok, bitmapLine = false;
 
 	if (attr.hasAttribute("src"))
 		file = resourcePath(attr.value("src").toString(), dir);
@@ -505,23 +521,62 @@ void Style::symbol(QXmlStreamReader &reader, const QString &dir, qreal ratio,
 			return;
 		}
 	}
-	if (attr.hasAttribute("priority")) {
-		ri._priority = attr.value("priority").toInt(&ok);
-		if (!ok) {
-			reader.raiseError("invalid priority value");
+
+	// Convert repeating "always-display" lineSymbols to bitmap lines
+	if (line && (rule._type == Rule::AnyType || rule._type == Rule::WayType)) {
+		bool repeat = (attr.value("repeat").toString() == "true");
+		bool always = (attr.value("display").toString() == "always");
+		double start = attr.hasAttribute("repeat-start")
+		  ? attr.value("repeat-start").toDouble(&ok) : 30;
+
+		if (always && repeat && ok && start == 0)
+			bitmapLine = true;
+	}
+
+	if (bitmapLine) {
+		PathRender pr(rule, _paths.size() + _circles.size()
+		  + _hillShading.isValid());
+
+		double gap = attr.hasAttribute("repeat-gap")
+		  ? attr.value("repeat-gap").toDouble(&ok) : 200;
+		if (!ok || gap < 0) {
+			reader.raiseError("invalid repeat-gap value");
 			return;
 		}
-	}
-	if (attr.hasAttribute("rotate")) {
-		if (attr.value("rotate").toString() == "false")
-			ri._rotate = false;
-	}
-	if (attr.hasAttribute("id"))
-		ri._id = attr.value("id").toString();
 
-	ri._img = image(file, width, height, percent, ratio);
+		QImage s(image(file, width, height, percent, ratio));
+		pr._img = QImage(qCeil(gap) + s.width(), s.height(),
+		  QImage::Format_ARGB32_Premultiplied);
+		pr._img.setDevicePixelRatio(s.devicePixelRatio());
+		pr._img.fill(Qt::transparent);
+		QPainter painter(&pr._img);
+		painter.drawImage(QPoint(0, 0), s);
 
-	list.append(ri);
+		pr._brush = Qt::NoBrush;
+
+		_paths.append(pr);
+	} else {
+		ri._img = image(file, width, height, percent, ratio);
+
+		if (attr.hasAttribute("priority")) {
+			ri._priority = attr.value("priority").toInt(&ok);
+			if (!ok) {
+				reader.raiseError("invalid priority value");
+				return;
+			}
+		}
+		if (attr.hasAttribute("rotate")) {
+			if (attr.value("rotate").toString() == "false")
+				ri._rotate = false;
+		}
+		if (attr.hasAttribute("id"))
+			ri._id = attr.value("id").toString();
+
+		if (line)
+			_lineSymbols.append(ri);
+		else
+			_symbols.append(ri);
+	}
 
 	reader.skipCurrentElement();
 }
@@ -580,22 +635,14 @@ void Style::rule(QXmlStreamReader &reader, const QString &dir,
 			line(reader, dir, ratio, baseStrokeWidth, r);
 		else if (reader.name() == QLatin1String("circle"))
 			circle(reader, baseStrokeWidth, r);
-		else if (reader.name() == QLatin1String("pathText")) {
-			QList<QList<TextRender>*> list;
-			list.append(&_pathLabels);
-			text(reader, data, r, list);
-		} else if (reader.name() == QLatin1String("caption")) {
-			QList<QList<TextRender>*> list;
-			if (r._type == Rule::WayType || r._type == Rule::AnyType)
-				list.append(&_areaLabels);
-			if (r._type == Rule::NodeType || r._type == Rule::AnyType)
-				list.append(&_pointLabels);
-			text(reader, data, r, list);
-		}
+		else if (reader.name() == QLatin1String("pathText"))
+			text(reader, data, r, true);
+		else if (reader.name() == QLatin1String("caption"))
+			text(reader, data, r, false);
 		else if (reader.name() == QLatin1String("symbol"))
-			symbol(reader, dir, ratio, r, _symbols);
+			symbol(reader, dir, ratio, r, false);
 		else if (reader.name() == QLatin1String("lineSymbol"))
-			symbol(reader, dir, ratio, r, _lineSymbols);
+			symbol(reader, dir, ratio, r, true);
 		else
 			reader.skipCurrentElement();
 	}
@@ -747,8 +794,8 @@ bool Style::loadXml(const QString &path, const MapData &data, qreal ratio)
 	}
 
 	if (reader.error())
-		qWarning("%s:%lld %s", qPrintable(path), reader.lineNumber(),
-		  qPrintable(reader.errorString()));
+		qWarning("%s:%lld %s", qUtf8Printable(path), reader.lineNumber(),
+		  qUtf8Printable(reader.errorString()));
 
 	return !reader.error();
 }
@@ -758,7 +805,12 @@ void Style::load(const MapData &data, qreal ratio)
 	QString path(ProgramPaths::renderthemeFile());
 
 	if (!QFileInfo::exists(path) || !loadXml(path, data, ratio))
-		loadXml(":/mapsforge/default.xml", data, ratio);
+		loadXml(":/style/style.xml", data, ratio);
+
+	std::sort(_symbols.begin(), _symbols.end());
+	std::sort(_lineSymbols.begin(), _lineSymbols.end());
+	std::stable_sort(_labels.begin(), _labels.end());
+	std::stable_sort(_pathLabels.begin(), _pathLabels.end());
 }
 
 void Style::clear()
@@ -766,8 +818,7 @@ void Style::clear()
 	_paths = QList<PathRender>();
 	_circles = QList<CircleRender>();
 	_pathLabels = QList<TextRender>();
-	_pointLabels = QList<TextRender>();
-	_areaLabels = QList<TextRender>();
+	_labels = QList<TextRender>();
 	_symbols = QList<Symbol>();
 	_lineSymbols = QList<Symbol>();
 	_hillShading = HillShadingRender();
@@ -814,38 +865,14 @@ QList<const Style::TextRender*> Style::pathLabels(int zoom) const
 	return list;
 }
 
-QList<const Style::TextRender*> Style::pointLabels(int zoom) const
+QList<const Style::TextRender*> Style::labels(int zoom) const
 {
 	QList<const TextRender*> list;
 
-	for (int i = 0; i < _pointLabels.size(); i++)
-		if (_pointLabels.at(i).rule()._zooms.contains(zoom))
-			list.append(&_pointLabels.at(i));
-
-	return list;
-}
-
-QList<const Style::TextRender*> Style::areaLabels(int zoom) const
-{
-	QList<const TextRender*> list;
-
-	for (int i = 0; i < _areaLabels.size(); i++)
-		if (_areaLabels.at(i).rule()._zooms.contains(zoom))
-			list.append(&_areaLabels.at(i));
-
-	return list;
-}
-
-QList<const Style::Symbol*> Style::pointSymbols(int zoom) const
-{
-	QList<const Symbol*> list;
-
-	for (int i = 0; i < _symbols.size(); i++) {
-		const Symbol &symbol = _symbols.at(i);
-		const Rule &rule = symbol.rule();
-		if (rule._zooms.contains(zoom) && (rule._type == Rule::AnyType
-		  || rule._type == Rule::NodeType))
-			list.append(&symbol);
+	for (int i = 0; i < _labels.size(); i++) {
+		const TextRender &label= _labels.at(i);
+		if (label.rule()._zooms.contains(zoom))
+			list.append(&label);
 	}
 
 	return list;
@@ -864,15 +891,13 @@ QList<const Style::Symbol*> Style::lineSymbols(int zoom) const
 	return list;
 }
 
-QList<const Style::Symbol*> Style::areaSymbols(int zoom) const
+QList<const Style::Symbol*> Style::symbols(int zoom) const
 {
 	QList<const Symbol*> list;
 
 	for (int i = 0; i < _symbols.size(); i++) {
 		const Symbol &symbol = _symbols.at(i);
-		const Rule &rule = symbol.rule();
-		if (rule._zooms.contains(zoom) && (rule._type == Rule::AnyType
-		  || rule._type == Rule::WayType))
+		if (symbol.rule()._zooms.contains(zoom))
 			list.append(&symbol);
 	}
 

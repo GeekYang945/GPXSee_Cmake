@@ -164,7 +164,8 @@ void GUI::mapInitialized()
 		_showMapAction->setEnabled(true);
 		_clearMapCacheAction->setEnabled(true);
 	} else {
-		qWarning("%s: %s", qPrintable(map->path()), qPrintable(map->errorString()));
+		qWarning("%s: %s", qUtf8Printable(map->path()),
+		  qUtf8Printable(map->errorString()));
 		action->deleteLater();
 	}
 }
@@ -447,6 +448,11 @@ void GUI::createActions()
 	_showTicksAction->setCheckable(true);
 	connect(_showTicksAction, &QAction::triggered, _mapView,
 	  &MapView::showTicks);
+	_showLegendAction = new QAction(tr("Legend"), this);
+	_showLegendAction->setMenuRole(QAction::NoRole);
+	_showLegendAction->setCheckable(true);
+	connect(_showLegendAction, &QAction::triggered, _mapView,
+	  &MapView::showLegend);
 	QActionGroup *markerInfoGroup = new QActionGroup(this);
 	connect(markerInfoGroup, &QActionGroup::triggered, this,
 	  &GUI::showPathMarkerInfo);
@@ -718,6 +724,7 @@ void GUI::createMenus()
 	dataMenu->addAction(_showWaypointLabelsAction);
 	dataMenu->addAction(_showRouteWaypointsAction);
 	dataMenu->addAction(_showTicksAction);
+	dataMenu->addAction(_showLegendAction);
 	QMenu *markerMenu = dataMenu->addMenu(tr("Position info"));
 	markerMenu->menuAction()->setMenuRole(QAction::NoRole);
 	markerMenu->addAction(_hideMarkersAction);
@@ -1068,22 +1075,34 @@ void GUI::openDir()
 
 bool GUI::openFile(const QString &fileName, bool tryUnknown, int &showError)
 {
-	QFileInfo fi(fileName);
-	QString canonicalFileName(fi.canonicalFilePath());
+	QString path;
 
-	if (_files.contains(canonicalFileName))
+	QUrl url(fileName);
+	if (url.scheme() == "geo") {
+		if (loadURL(url, showError)) {
+			_fileActionGroup->setEnabled(true);
+			return true;
+		} else if (showError)
+			return false;
+	} else if (url.isLocalFile())
+		path = url.toLocalFile();
+	else
+		path = fileName;
+
+	QFileInfo fi(path);
+	QString canonicalPath(fi.canonicalFilePath());
+
+	if (_files.contains(canonicalPath))
 		return true;
 
-	if (!loadFile(fileName, tryUnknown, showError))
+	if (!loadFile(path, tryUnknown, showError))
 		return false;
 
-	_files.append(canonicalFileName);
+	_files.append(canonicalPath);
 #ifndef Q_OS_ANDROID
-	_browser->setCurrent(fileName);
+	_browser->setCurrent(path);
 #endif // Q_OS_ANDROID
 	_fileActionGroup->setEnabled(true);
-	// Explicitly enable the reload action as it may be disabled by loadMapDir()
-	_reloadFileAction->setEnabled(true);
 	_navigationActionGroup->setEnabled(true);
 
 	updateNavigationActions();
@@ -1092,10 +1111,40 @@ bool GUI::openFile(const QString &fileName, bool tryUnknown, int &showError)
 	if (_files.count() > 1)
 		_mapView->showExtendedInfo(true);
 #ifndef Q_OS_ANDROID
-	updateRecentFiles(canonicalFileName);
+	updateRecentFiles(canonicalPath);
 #endif // Q_OS_ANDROID
 
 	return true;
+}
+
+bool GUI::loadURL(const QUrl &url, int &showError)
+{
+	Data data(url);
+
+	if (data.isValid()) {
+		loadData(data);
+		return true;
+	} else {
+		if (showError) {
+			QString error = tr("Error loading geo URI:") + "\n" + url.toString()
+			  + ": " + data.errorString();
+
+			if (showError > 1) {
+				QMessageBox message(QMessageBox::Critical, APP_NAME, error,
+				  QMessageBox::Ok, this);
+				QCheckBox checkBox(tr("Don't show again"));
+				message.setCheckBox(&checkBox);
+				message.exec();
+				if (checkBox.isChecked())
+					showError = 0;
+			} else
+				QMessageBox::critical(this, APP_NAME, error);
+		} else
+			qWarning("%s: %s", qUtf8Printable(url.toString()),
+			  qUtf8Printable(data.errorString()));
+
+		return false;
+	}
 }
 
 bool GUI::loadFile(const QString &fileName, bool tryUnknown, int &showError)
@@ -1147,10 +1196,12 @@ void GUI::loadData(const Data &data)
 		_time += track.time();
 		_movingTime += track.movingTime();
 		const QDateTime date = track.date().toTimeZone(_options.timeZone.zone());
-		if (_dateRange.first.isNull() || _dateRange.first > date)
-			_dateRange.first = date;
-		if (_dateRange.second.isNull() || _dateRange.second < date)
-			_dateRange.second = date;
+		if (date.isValid()) {
+			if (_dateRange.first.isNull() || _dateRange.first > date)
+				_dateRange.first = date;
+			if (_dateRange.second.isNull() || _dateRange.second < date)
+				_dateRange.second = date;
+		}
 	}
 	_trackCount += data.tracks().count();
 
@@ -1849,7 +1900,13 @@ bool GUI::loadMapNode(const TreeNode<Map*> &node, MapAction *&action,
 
 bool GUI::loadMap(const QString &fileName, MapAction *&action, int &showError)
 {
-	TreeNode<Map*> maps(MapList::loadMaps(fileName, _mapView->inputProjection()));
+	QString path;
+	QUrl url(fileName);
+
+	path = url.isLocalFile() ? url.toLocalFile() : fileName;
+
+
+	TreeNode<Map*> maps(MapList::loadMaps(path, _mapView->inputProjection()));
 	QList<QAction*> existingActions(_mapsActionGroup->actions());
 
 	return loadMapNode(maps, action, existingActions, showError);
@@ -1971,7 +2028,6 @@ void GUI::loadMapDir()
 
 	_mapDir = fi.absolutePath();
 	_fileActionGroup->setEnabled(true);
-	_reloadFileAction->setEnabled(false);
 }
 
 void GUI::clearMapCache()
@@ -2033,11 +2089,8 @@ void GUI::showDEMTiles()
 		QMessageBox::information(this, APP_NAME, tr("No local DEM tiles found."));
 	} else {
 		_mapView->loadDEMs(tiles);
-
 		_areaCount += tiles.size();
-
 		_fileActionGroup->setEnabled(true);
-		_reloadFileAction->setEnabled(false);
 	}
 }
 
@@ -2446,12 +2499,8 @@ QGeoPositionInfoSource *GUI::positionSource(const Options &options)
 {
 	QGeoPositionInfoSource *source;
 
-#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
-	source = QGeoPositionInfoSource::createSource(options.plugin, this);
-#else // QT 5.14
 	source = QGeoPositionInfoSource::createSource(options.plugin,
 	  options.pluginParams.value(options.plugin), this);
-#endif // QT 5.14
 	if (source)
 		source->setPreferredPositioningMethods(
 		  QGeoPositionInfoSource::SatellitePositioningMethods);
@@ -2566,6 +2615,7 @@ void GUI::writeSettings()
 	WRITE(waypointLabels, _showWaypointLabelsAction->isChecked());
 	WRITE(routeWaypoints, _showRouteWaypointsAction->isChecked());
 	WRITE(pathTicks, _showTicksAction->isChecked());
+	WRITE(legend, _showLegendAction->isChecked());
 	WRITE(positionMarkers, _showMarkersAction->isChecked()
 	  || _showMarkerDateAction->isChecked()
 	  || _showMarkerCoordinatesAction->isChecked());
@@ -2856,6 +2906,10 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 	if (READ(pathTicks).toBool()) {
 		_showTicksAction->setChecked(true);
 		_mapView->showTicks(true);
+	}
+	if (READ(legend).toBool()) {
+		_showLegendAction->setChecked(true);
+		_mapView->showLegend(true);
 	}
 	if (READ(useStyles).toBool()) {
 		_useStylesAction->setChecked(true);

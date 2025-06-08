@@ -2,6 +2,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include "common/util.h"
+#include "map/crs.h"
 #include "gpxparser.h"
 #include "tcxparser.h"
 #include "csvparser.h"
@@ -22,6 +23,9 @@
 #include "onmoveparsers.h"
 #include "twonavparser.h"
 #include "gpsdumpparser.h"
+#include "txtparser.h"
+#include "vtkparser.h"
+#include "vkxparser.h"
 #include "data.h"
 
 
@@ -48,6 +52,9 @@ static OMDParser omd;
 static GHPParser ghp;
 static TwoNavParser twonav;
 static GPSDumpParser gpsdump;
+static TXTParser txt;
+static VTKParser vtk;
+static VKXParser vkx;
 
 static QMultiMap<QString, Parser*> parsers()
 {
@@ -81,6 +88,9 @@ static QMultiMap<QString, Parser*> parsers()
 	map.insert("rte", &twonav);
 	map.insert("wpt", &twonav);
 	map.insert("wpt", &gpsdump);
+	map.insert("txt", &txt);
+	map.insert("vtk", &vtk);
+	map.insert("vkx", &vkx);
 
 	return map;
 }
@@ -127,11 +137,11 @@ Data::Data(const QString &fileName, bool tryUnknown)
 			++it;
 		}
 
-		qWarning("%s:", qPrintable(fileName));
+		qWarning("%s:", qUtf8Printable(fileName));
 		for (it = _parsers.find(suffix); it != _parsers.end()
 		  && it.key() == suffix; it++)
-			qWarning("  %s: line %d: %s", qPrintable(it.key()),
-			  it.value()->errorLine(), qPrintable(it.value()->errorString()));
+			qWarning("  %s: line %d: %s", qUtf8Printable(it.key()),
+			  it.value()->errorLine(), qUtf8Printable(it.value()->errorString()));
 
 	} else if (tryUnknown) {
 		for (it = _parsers.begin(); it != _parsers.end(); it++) {
@@ -144,14 +154,78 @@ Data::Data(const QString &fileName, bool tryUnknown)
 			file.reset();
 		}
 
-		qWarning("%s:", qPrintable(fileName));
+		qWarning("%s:", qUtf8Printable(fileName));
 		for (it = _parsers.begin(); it != _parsers.end(); it++)
-			qWarning("  %s: line %d: %s", qPrintable(it.key()),
-			  it.value()->errorLine(), qPrintable(it.value()->errorString()));
+			qWarning("  %s: line %d: %s", qUtf8Printable(it.key()),
+			  it.value()->errorLine(), qUtf8Printable(it.value()->errorString()));
 
 		_errorLine = 0;
 		_errorString = "Unknown format";
 	}
+}
+
+Data::Data(const QUrl &url)
+{
+	bool caOk, cbOk, ccOk;
+	Projection proj(GCS::WGS84());
+
+	_valid = false;
+
+	QStringList parts(url.path().split(';'));
+	if (parts.size() < 1) {
+		_errorString = "Syntax error";
+		return;
+	}
+	QStringList coords(parts.at(0).split(','));
+	if (coords.size() < 2 || coords.size() > 3) {
+		_errorString = "Syntax error";
+		return;
+	}
+	double ca = coords.at(0).toDouble(&caOk);
+	double cb = coords.at(1).toDouble(&cbOk);
+	double cc = NAN;
+	if (!(caOk && cbOk)) {
+		_errorString = "Invalid coordinates";
+		return;
+	}
+	if (coords.size() > 2) {
+		cc = coords.at(2).toDouble(&ccOk);
+		if (!ccOk) {
+			_errorString = "Invalid elevation";
+			return;
+		}
+	}
+
+	if (parts.size() > 1) {
+		QStringList crsp(parts.at(1).split('='));
+		if (crsp.size() != 2) {
+			_errorString = "Syntax error";
+			return;
+		}
+		if (!crsp.at(0).compare("crs", Qt::CaseInsensitive)) {
+			if (crsp.at(1).compare("wgs84", Qt::CaseInsensitive)) {
+				proj = CRS::projection(crsp.at(1));
+				if (!proj.isValid()) {
+					_errorString = "Unknown CRS";
+					return;
+				}
+			}
+		}
+	}
+
+	CoordinateSystem::AxisOrder ao = proj.coordinateSystem().axisOrder();
+	PointD p(ao == CoordinateSystem::XY ? PointD(ca, cb) : PointD(cb, ca));
+	Coordinates c(proj.xy2ll(p));
+	if (!c.isValid()) {
+		_errorString = "Invalid coordinates";
+		return;
+	}
+
+	Waypoint w(c);
+	w.setElevation(cc);
+	_waypoints.append(w);
+
+	_valid = true;
 }
 
 QString Data::formats()
@@ -176,6 +250,9 @@ QString Data::formats()
 	  + qApp->translate("Data", "SLF files") + " (*.slf);;"
 	  + qApp->translate("Data", "SML files") + " (*.sml);;"
 	  + qApp->translate("Data", "TCX files") + " (*.tcx);;"
+	  + qApp->translate("Data", "70mai GPS log files") + " (*.txt);;"
+	  + qApp->translate("Data", "VKX files") + " (*.vkx);;"
+	  + qApp->translate("Data", "VTK files") + " (*.vtk);;"
 	  + qApp->translate("Data", "TwoNav files") + " (*.rte *.trk *.wpt);;"
 	  + qApp->translate("Data", "GPSDump files") + " (*.wpt);;"
 	  + qApp->translate("Data", "All files") + " (*)";

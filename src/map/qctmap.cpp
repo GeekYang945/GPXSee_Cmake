@@ -361,7 +361,9 @@ void QCTMap::load(const Projection &in, const Projection &out,
 	Q_UNUSED(out);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
-	_file.open(QIODevice::ReadOnly);
+	if (!_file.open(QIODevice::ReadOnly))
+		qWarning("%s: %s", qUtf8Printable(_file.fileName()),
+		  qUtf8Printable(_file.errorString()));
 }
 
 void QCTMap::unload()
@@ -481,7 +483,7 @@ void QCTMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 			}
 
 			if (pixmap.isNull())
-				qWarning("%s: error loading tile image", qPrintable(key));
+				qWarning("%s: error loading tile image", qUtf8Printable(key));
 			else {
 				pixmap.setDevicePixelRatio(_mapRatio);
 				QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());

@@ -5,7 +5,9 @@ GPS log file formats.
 ## Features
 * Opens GPX, TCX, FIT, KML, NMEA, IGC, CUP, SIGMA SLF, Suunto SML, LOC, GeoJSON,
   OziExplorer (PLT, RTE, WPT), Garmin GPI&CSV, TomTom OV2&ITN, ONmove OMD/GHP,
-  TwoNav (TRK, RTE, WPT), GPSDump WPT and geotagged JPEG files.
+  TwoNav (TRK, RTE, WPT), GPSDump WPT, Velocitek VTK, Vakaros VKX, 70mai GPS logs
+  and geotagged JPEG files.
+* Opens geo URIs (RFC 5870).
 * User-definable online maps (OpenStreetMap/Google tiles, WMTS, WMS, TMS,
   QuadTiles).
 * Offline maps (MBTiles, OziExplorer maps, TrekBuddy maps/atlases,
@@ -28,8 +30,8 @@ GPS log file formats.
 
 ## Build
 Build requirements:
-* Qt5 >= 5.11 or Qt6 >= 6.2 (Android builds require Qt6)
-* C++11 or newer compiler (tested: msvc2019, gcc 7.5.0, clang/Apple LLVM version
+* Qt5 >= 5.15 or Qt6 >= 6.2 (Android builds require Qt6)
+* C++11 or newer compiler (tested: msvc2022, gcc 11, clang/Apple LLVM version
   10.0.0)
 
 Build steps:
@@ -73,5 +75,3 @@ different, GPL compatible, licenses:
   [Transverse Mercator](src/map/proj/transversemercator.cpp) projections - NIMA
   Source Code Disclaimer
 * [Projection parameters CSV files](data/CRS) - BSD/EPSG/Public domain
-* [Mapsforge render theme](data/mapsforge/default.xml) and its
-  [icons](icons/map/mapsforge) - LGPLv3

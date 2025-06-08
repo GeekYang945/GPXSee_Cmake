@@ -12,6 +12,8 @@ using namespace ENC;
 #define EPSILON   1e-6
 #define TILE_SIZE 512
 
+constexpr quint32 CATD = ISO8211::TAG("CATD");
+
 Range ENCAtlas::zooms(IntendedUsage usage)
 {
 	switch (usage) {
@@ -59,36 +61,27 @@ bool ENCAtlas::processRecord(const ISO8211::Record &record, QByteArray &file,
 	if (record.size() < 2)
 		return false;
 
-	const ENC::ISO8211::Field &f = record.at(1);
-	const QByteArray &ba = f.tag();
+	const ENC::ISO8211::Field &field = record.at(1);
 
-	if (ba == "CATD") {
-		QByteArray FILE, IMPL;
-
-		if (!f.subfield("IMPL", &IMPL))
+	if (field.tag() == CATD) {
+		if (field.data().at(0).size() < 10)
 			return false;
-		if (!f.subfield("FILE", &FILE))
-			return false;
+		QByteArray impl = field.data().at(0).at(5).toByteArray();
+		file = field.data().at(0).at(2).toByteArray();
 
-		if (IMPL == "BIN" && FILE.endsWith("000")) {
-			QByteArray SLAT, WLON, NLAT, ELON;
-
-			if (!f.subfield("SLAT", &SLAT))
-				return false;
-			if (!f.subfield("WLON", &WLON))
-				return false;
-			if (!f.subfield("NLAT", &NLAT))
-				return false;
-			if (!f.subfield("ELON", &ELON))
-				return false;
+		if (impl == "BIN" && file.endsWith("000")) {
+			QByteArray slat = field.data().at(0).at(6).toByteArray();
+			QByteArray wlon = field.data().at(0).at(7).toByteArray();
+			QByteArray nlat = field.data().at(0).at(8).toByteArray();
+			QByteArray elon = field.data().at(0).at(9).toByteArray();
 
 			bool ok1, ok2, ok3, ok4;
-			bounds = RectC(Coordinates(WLON.toDouble(&ok1), NLAT.toDouble(&ok2)),
-			  Coordinates(ELON.toDouble(&ok3), SLAT.toDouble(&ok4)));
+			bounds = RectC(Coordinates(wlon.toDouble(&ok1), nlat.toDouble(&ok2)),
+			  Coordinates(elon.toDouble(&ok3), slat.toDouble(&ok4)));
 			if (!(ok1 && ok2 && ok3 && ok4))
 				return false;
 
-			file = FILE.replace('\\', '/');
+			file.replace('\\', '/');
 
 			return true;
 		}
@@ -102,11 +95,11 @@ void ENCAtlas::addMap(const QDir &dir, const QByteArray &file,
 {
 	QString path(dir.absoluteFilePath(file));
 	if (!QFileInfo::exists(path)) {
-		qWarning("%s: No such map file", qPrintable(path));
+		qWarning("%s: No such map file", qUtf8Printable(path));
 		return;
 	}
 	if (!bounds.isValid()) {
-		qWarning("%s: Invalid map bounds", qPrintable(path));
+		qWarning("%s: Invalid map bounds", qUtf8Printable(path));
 		return;
 	}
 
@@ -134,13 +127,13 @@ ENCAtlas::ENCAtlas(const QString &fileName, QObject *parent)
 		_errorString = ddf.errorString();
 		return;
 	}
-	while (ddf.readRecord(record)) {
+	while (!ddf.atEnd()) {
+		if (!ddf.readRecord(record)) {
+			_errorString = ddf.errorString();
+			return;
+		}
 		if (processRecord(record, file, bounds))
 			addMap(dir, file, bounds);
-	}
-	if (!ddf.errorString().isNull()) {
-		_errorString = ddf.errorString();
-		return;
 	}
 
 	if (_data.isEmpty()) {
@@ -154,7 +147,7 @@ ENCAtlas::ENCAtlas(const QString &fileName, QObject *parent)
 	_zoom = zooms(_usage).min();
 	updateTransform();
 
-	_cache.setMaxCost(10);
+	_cache.setMaxCost(16);
 
 	_valid = true;
 }
@@ -345,9 +338,21 @@ QString ENCAtlas::key(int zoom, const QPoint &xy) const
 	  + QString::number(xy.x()) + "_" + QString::number(xy.y());
 }
 
+QList<Data*> ENCAtlas::levels() const
+{
+	QList<Data*> list;
+	QMap<IntendedUsage, ENC::AtlasData*>::const_iterator it = _data.find(_usage);
+
+	do {
+		list.append(it.value());
+	} while (it-- != _data.cbegin());
+
+	return list;
+}
+
 void ENCAtlas::draw(QPainter *painter, const QRectF &rect, Flags flags)
 {
-	AtlasData *data = _data.value(_usage);
+	QList<Data*> data(levels());
 	Range zr(zooms(_usage));
 	QPointF tl(floor(rect.left() / TILE_SIZE) * TILE_SIZE,
 	  floor(rect.top() / TILE_SIZE) * TILE_SIZE);

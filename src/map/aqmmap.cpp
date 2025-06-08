@@ -258,7 +258,9 @@ void AQMMap::load(const Projection &in, const Projection &out,
 	Q_UNUSED(out);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
-	_file.open(QIODevice::ReadOnly);
+	if (!_file.open(QIODevice::ReadOnly))
+		qWarning("%s: %s", qUtf8Printable(_file.fileName()),
+		  qUtf8Printable(_file.errorString()));
 }
 
 void AQMMap::unload()

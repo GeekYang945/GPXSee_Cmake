@@ -39,6 +39,16 @@ static void copyPoints(const RectC &rect, const QList<MapData::Point> *src,
 	}
 }
 
+static void copyPoints(const RectC &rect, const QList<MapData::Path> *src,
+  QList<MapData::Point> *dst)
+{
+	for (int i = 0; i < src->size(); i++) {
+		const MapData::Path &path = src->at(i);
+		if (path.closed && rect.contains(path.point.coordinates))
+			dst->append(path.point);
+	}
+}
+
 static double distance(const Coordinates &c1, const Coordinates &c2)
 {
 	return hypot(c1.lon() - c2.lon(), c1.lat() - c2.lat());
@@ -209,10 +219,9 @@ bool MapData::readTags(SubFile &subfile, int count,
 	return true;
 }
 
-bool MapData::readSubFiles()
+bool MapData::readSubFiles(QFile &file)
 {
-	/* both _pointFile and _pathFile can be used here */
-	QDataStream stream(&_pointFile);
+	QDataStream stream(&file);
 
 	for (int i = 0; i < _subFiles.size(); i++) {
 		const SubFileInfo &f = _subFiles.at(i);
@@ -412,8 +421,7 @@ bool MapData::readHeader(QFile &file)
 	return true;
 }
 
-MapData::MapData(const QString &fileName)
-  : _pointFile(fileName), _pathFile(fileName), _valid(false)
+MapData::MapData(const QString &fileName) : _fileName(fileName), _valid(false)
 {
 	QFile file(fileName);
 
@@ -425,8 +433,8 @@ MapData::MapData(const QString &fileName)
 	if (!readHeader(file))
 		return;
 
-	_pathCache.setMaxCost(256);
-	_pointCache.setMaxCost(256);
+	_pathCache.setMaxCost(2048);
+	_pointCache.setMaxCost(2048);
 
 	_valid = true;
 }
@@ -450,17 +458,17 @@ RectC MapData::bounds() const
 
 void MapData::load()
 {
-	_pointFile.open(QIODevice::ReadOnly | QIODevice::Unbuffered);
-	_pathFile.open(QIODevice::ReadOnly | QIODevice::Unbuffered);
+	QFile file(_fileName);
 
-	readSubFiles();
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
+		qWarning("%s: %s", qUtf8Printable(file.fileName()),
+		  qUtf8Printable(file.errorString()));
+	else
+		readSubFiles(file);
 }
 
 void MapData::clear()
 {
-	_pointFile.close();
-	_pathFile.close();
-
 	_pathCache.clear();
 	_pointCache.clear();
 
@@ -484,14 +492,14 @@ void MapData::clearTiles()
 bool MapData::pathCb(VectorTile *tile, void *context)
 {
 	PathCTX *ctx = (PathCTX*)context;
-	ctx->data->paths(tile, ctx->rect, ctx->zoom, ctx->list);
+	ctx->data->paths(ctx->file, tile, ctx->rect, ctx->zoom, ctx->list);
 	return true;
 }
 
 bool MapData::pointCb(VectorTile *tile, void *context)
 {
 	PointCTX *ctx = (PointCTX*)context;
-	ctx->data->points(tile, ctx->rect, ctx->zoom, ctx->list);
+	ctx->data->points(ctx->file, tile, ctx->rect, ctx->zoom, ctx->list);
 	return true;
 }
 
@@ -504,13 +512,14 @@ int MapData::level(int zoom) const
 	return _subFiles.size() - 1;
 }
 
-void MapData::points(const RectC &rect, int zoom, QList<Point> *list)
+void MapData::points(QFile &file, const RectC &rect, int zoom,
+  QList<Point> *list)
 {
 	if (!rect.isValid())
 		return;
 
 	int l(level(zoom));
-	PointCTX ctx(this, rect, zoom, list);
+	PointCTX ctx(file, this, rect, zoom, list);
 	double min[2], max[2];
 
 	min[0] = rect.left();
@@ -521,36 +530,58 @@ void MapData::points(const RectC &rect, int zoom, QList<Point> *list)
 	_tiles.at(l)->Search(min, max, pointCb, &ctx);
 }
 
-void MapData::points(const VectorTile *tile, const RectC &rect, int zoom,
-  QList<Point> *list)
+void MapData::points(QFile &file, VectorTile *tile, const RectC &rect,
+  int zoom, QList<Point> *list)
 {
 	Key key(tile, zoom);
 
-	_pointLock.lock();
+	tile->lock.lock();
 
-	QList<Point> *cached = _pointCache.object(key);
-
-	if (!cached) {
+	_pointCacheLock.lock();
+	QList<Point> *tilePoints = _pointCache.object(key);
+	if (!tilePoints) {
+		_pointCacheLock.unlock();
 		QList<Point> *p = new QList<Point>();
-		if (readPoints(tile, zoom, p)) {
+		if (readPoints(file, tile, zoom, p)) {
 			copyPoints(rect, p, list);
+			_pointCacheLock.lock();
 			_pointCache.insert(key, p);
+			_pointCacheLock.unlock();
 		} else
 			delete p;
-	} else
-		copyPoints(rect, cached, list);
+	} else {
+		copyPoints(rect, tilePoints, list);
+		_pointCacheLock.unlock();
+	}
 
-	_pointLock.unlock();
+	_pathCacheLock.lock();
+	QList<Path> *tilePaths = _pathCache.object(key);
+	if (!tilePaths) {
+		_pathCacheLock.unlock();
+		QList<Path> *p = new QList<Path>();
+		if (readPaths(file, tile, zoom, p)) {
+			copyPoints(rect, p, list);
+			_pathCacheLock.lock();
+			_pathCache.insert(key, p);
+			_pathCacheLock.unlock();
+		} else
+			delete p;
+	} else {
+		copyPoints(rect, tilePaths, list);
+		_pathCacheLock.unlock();
+	}
+
+	tile->lock.unlock();
 }
 
-void MapData::paths(const RectC &searchRect, const RectC &boundsRect, int zoom,
-  QList<Path> *list)
+void MapData::paths(QFile &file, const RectC &searchRect,
+  const RectC &boundsRect, int zoom, QList<Path> *list)
 {
 	if (!searchRect.isValid())
 		return;
 
 	int l(level(zoom));
-	PathCTX ctx(this, boundsRect, zoom, list);
+	PathCTX ctx(file, this, boundsRect, zoom, list);
 	double min[2], max[2];
 
 	min[0] = searchRect.left();
@@ -561,32 +592,38 @@ void MapData::paths(const RectC &searchRect, const RectC &boundsRect, int zoom,
 	_tiles.at(l)->Search(min, max, pathCb, &ctx);
 }
 
-void MapData::paths(const VectorTile *tile, const RectC &rect, int zoom,
+void MapData::paths(QFile &file, VectorTile *tile, const RectC &rect, int zoom,
   QList<Path> *list)
 {
 	Key key(tile, zoom);
 
-	_pathLock.lock();
+	tile->lock.lock();
 
+	_pathCacheLock.lock();
 	QList<Path> *cached = _pathCache.object(key);
-
 	if (!cached) {
+		_pathCacheLock.unlock();
 		QList<Path> *p = new QList<Path>();
-		if (readPaths(tile, zoom, p)) {
+		if (readPaths(file, tile, zoom, p)) {
 			copyPaths(rect, p, list);
+			_pathCacheLock.lock();
 			_pathCache.insert(key, p);
+			_pathCacheLock.unlock();
 		} else
 			delete p;
-	} else
+	} else {
 		copyPaths(rect, cached, list);
+		_pathCacheLock.unlock();
+	}
 
-	_pathLock.unlock();
+	tile->lock.unlock();
 }
 
-bool MapData::readPaths(const VectorTile *tile, int zoom, QList<Path> *list)
+bool MapData::readPaths(QFile &file, const VectorTile *tile, int zoom,
+  QList<Path> *list)
 {
 	const SubFileInfo &info = _subFiles.at(level(zoom));
-	SubFile subfile(_pathFile, info.offset, info.size);
+	SubFile subfile(file, info.offset, info.size);
 	int rows = info.max - info.min + 1;
 	QVector<unsigned> paths(rows);
 	quint32 blocks, unused, val, cnt = 0;
@@ -613,16 +650,16 @@ bool MapData::readPaths(const VectorTile *tile, int zoom, QList<Path> *list)
 	paths.reserve(paths[zoom - info.min]);
 
 	for (unsigned i = 0; i < paths[zoom - info.min]; i++) {
-		Path p;
 		qint32 lon = 0, lat = 0;
+		Path p(subfile.pos());
 
 		if (!(subfile.readVUInt32(unused) && subfile.readUInt16(bitmap)
 		  && subfile.readByte(sb)))
 			return false;
 
-		p.layer = sb >> 4;
+		p.point.layer = sb >> 4;
 		int tags = sb & 0x0F;
-		if (!readTags(subfile, tags, _pathTags, p.tags))
+		if (!readTags(subfile, tags, _pathTags, p.point.tags))
 			return false;
 
 		if (!subfile.readByte(flags))
@@ -631,17 +668,17 @@ bool MapData::readPaths(const VectorTile *tile, int zoom, QList<Path> *list)
 			if (!subfile.readString(name))
 				return false;
 			name = name.split('\r').first();
-			p.tags.append(Tag(ID_NAME, name));
+			p.point.tags.append(Tag(ID_NAME, name));
 		}
 		if (flags & 0x40) {
 			if (!subfile.readString(houseNumber))
 				return false;
-			p.tags.append(Tag(ID_HOUSE, houseNumber));
+			p.point.tags.append(Tag(ID_HOUSE, houseNumber));
 		}
 		if (flags & 0x20) {
 			if (!subfile.readString(reference))
 				return false;
-			p.tags.append(Tag(ID_REF, reference));
+			p.point.tags.append(Tag(ID_REF, reference));
 		}
 		if (flags & 0x10) {
 			if (!(subfile.readVInt32(lat) && subfile.readVInt32(lon)))
@@ -660,8 +697,10 @@ bool MapData::readPaths(const VectorTile *tile, int zoom, QList<Path> *list)
 		const QVector<Coordinates> &outline = p.poly.first();
 		p.closed = isClosed(outline);
 		if (flags & 0x10)
-			p.labelPos = Coordinates(outline.first().lon() + MD(lon),
+			p.point.coordinates = Coordinates(outline.first().lon() + MD(lon),
 			  outline.first().lat() + MD(lat));
+		else if (p.closed)
+			p.point.coordinates = p.poly.boundingRect().center();
 
 		list->append(p);
 	}
@@ -669,10 +708,11 @@ bool MapData::readPaths(const VectorTile *tile, int zoom, QList<Path> *list)
 	return true;
 }
 
-bool MapData::readPoints(const VectorTile *tile, int zoom, QList<Point> *list)
+bool MapData::readPoints(QFile &file, const VectorTile *tile, int zoom,
+  QList<Point> *list)
 {
 	const SubFileInfo &info = _subFiles.at(level(zoom));
-	SubFile subfile(_pointFile, info.offset, info.size);
+	SubFile subfile(file, info.offset, info.size);
 	int rows = info.max - info.min + 1;
 	QVector<unsigned> points(rows);
 	quint32 val, unused, cnt = 0;
@@ -697,11 +737,12 @@ bool MapData::readPoints(const VectorTile *tile, int zoom, QList<Point> *list)
 
 	for (unsigned i = 0; i < points[zoom - info.min]; i++) {
 		qint32 lat, lon;
+		Point p(subfile.pos());
 
 		if (!(subfile.readVInt32(lat) && subfile.readVInt32(lon)))
 			return false;
-		Point p(Coordinates(tile->pos.lon() + MD(lon),
-		  tile->pos.lat() + MD(lat)));
+		p.coordinates = Coordinates(tile->pos.lon() + MD(lon),
+		  tile->pos.lat() + MD(lat));
 
 		if (!subfile.readByte(sb))
 			return false;
@@ -746,7 +787,7 @@ QDebug operator<<(QDebug dbg, const Mapsforge::MapData::Tag &tag)
 QDebug operator<<(QDebug dbg, const MapData::Path &path)
 {
 	dbg.nospace() << "Path(" << path.poly.boundingRect() << ", "
-	  << path.tags << ")";
+	  << path.point.tags << ")";
 	return dbg.space();
 }
 

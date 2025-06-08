@@ -5,6 +5,7 @@
 #include <QPointF>
 #include <QCache>
 #include <QMutex>
+#include <QFile>
 #include <QDebug>
 #include "common/rectc.h"
 #include "common/rtree.h"
@@ -13,6 +14,7 @@
 #include "map/matrix.h"
 #include "label.h"
 #include "raster.h"
+#include "light.h"
 #include "zoom.h"
 
 namespace IMG {
@@ -27,18 +29,25 @@ class MapData
 {
 public:
 	struct Poly {
-		Poly() : oneway(false) {}
+		Poly() : flags(0) {}
+
+		enum Flags {
+			OneWay = 1,
+			Invert = 2,
+			Direction = 4,
+			Dashed = 8
+		};
 
 		/* QPointF insted of Coordinates for performance reasons (no need to
 		   duplicate all the vectors for drawing). Note, that we do not want to
 		   ll2xy() the points in the MapData class as this can not be done in
 		   parallel. */
 		QVector<QPointF> points;
+		RectC boundingRect;
 		Label label;
 		Raster raster;
 		quint32 type;
-		RectC boundingRect;
-		bool oneway;
+		quint32 flags;
 
 		bool operator<(const Poly &other) const
 		  {return type > other.type;}
@@ -48,13 +57,12 @@ public:
 		Point() : id(0), flags(0) {}
 
 		enum Flags {
-			NoFlag = 0,
 			ClassLabel = 1,
-			Light = 2
 		};
 
 		Coordinates coordinates;
 		Label label;
+		QVector<Light> lights;
 		quint64 id;
 		quint32 type;
 		quint32 flags;
@@ -77,10 +85,11 @@ public:
 	const RectC &bounds() const {return _bounds;}
 	const Range &zooms() const {return _zoomLevels;}
 	const Style *style() const {return _style;}
-	void polys(const RectC &rect, int bits, QList<Poly> *polygons,
+	void polys(QFile *file, const RectC &rect, int bits, QList<Poly> *polygons,
 	  QList<Poly> *lines);
-	void points(const RectC &rect, int bits, QList<Point> *points);
-	void elevations(const RectC &rect, int bits, QList<Elevation> *elevations);
+	void points(QFile *file, const RectC &rect, int bits, QList<Point> *points);
+	void elevations(QFile *file, const RectC &rect, int bits,
+	  QList<Elevation> *elevations);
 
 	void load(qreal ratio);
 	void clear();
@@ -122,12 +131,13 @@ private:
 
 	struct PolyCTX
 	{
-		PolyCTX(const RectC &rect, const Zoom &zoom,
+		PolyCTX(QFile *file, const RectC &rect, const Zoom &zoom,
 		  QList<MapData::Poly> *polygons, QList<MapData::Poly> *lines,
 		  PolyCache *cache, QMutex *lock)
-		  : rect(rect), zoom(zoom), polygons(polygons), lines(lines),
-		  cache(cache), lock(lock) {}
+		  : file(file), rect(rect), zoom(zoom), polygons(polygons),
+		  lines(lines), cache(cache), lock(lock) {}
 
+		QFile *file;
 		const RectC &rect;
 		const Zoom &zoom;
 		QList<MapData::Poly> *polygons;
@@ -138,10 +148,12 @@ private:
 
 	struct PointCTX
 	{
-		PointCTX(const RectC &rect, const Zoom &zoom,
+		PointCTX(QFile *file, const RectC &rect, const Zoom &zoom,
 		  QList<MapData::Point> *points, PointCache *cache, QMutex *lock)
-		  : rect(rect), zoom(zoom), points(points), cache(cache), lock(lock) {}
+		  : file(file), rect(rect), zoom(zoom), points(points), cache(cache),
+		  lock(lock) {}
 
+		QFile *file;
 		const RectC &rect;
 		const Zoom &zoom;
 		QList<MapData::Point> *points;
@@ -151,11 +163,12 @@ private:
 
 	struct ElevationCTX
 	{
-		ElevationCTX(const RectC &rect, const Zoom &zoom,
+		ElevationCTX(QFile *file, const RectC &rect, const Zoom &zoom,
 		  QList<Elevation> *elevations, ElevationCache *cache, QMutex *lock)
-		  : rect(rect), zoom(zoom), elevations(elevations), cache(cache),
-		  lock(lock) {}
+		  : file(file), rect(rect), zoom(zoom), elevations(elevations),
+		  cache(cache), lock(lock) {}
 
+		QFile *file;
 		const RectC &rect;
 		const Zoom &zoom;
 		QList<Elevation> *elevations;

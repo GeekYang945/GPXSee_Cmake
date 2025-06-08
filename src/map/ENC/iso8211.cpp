@@ -1,16 +1,10 @@
+#include <QtEndian>
 #include <QFile>
 #include <QRegularExpression>
 #include "common/util.h"
 #include "iso8211.h"
 
 using namespace ENC;
-
-#define UINT16(x) \
-  (((quint16)*(const uchar*)(x)) \
-  | ((quint16)(*((const uchar*)(x) + 1)) << 8))
-
-#define INT32(x) ((qint32)UINT32(x))
-#define INT16(x) ((qint16)UINT16(x))
 
 struct DR {
 	char RecordLength[5];
@@ -27,52 +21,6 @@ struct DR {
 	char Reserved;
 	char FieldTagSize;
 };
-
-
-const QVariant *ISO8211::Field::data(const QByteArray &name, int idx) const
-{
-	const QVector<QVariant> &v = _data.at(idx);
-
-	for (int i = 0; i < _subFields.size(); i++)
-		if (_subFields.at(i) == name)
-			return &v.at(i);
-
-	return 0;
-}
-
-bool ISO8211::Field::subfield(const char *name, int *val, int idx) const
-{
-	bool ok;
-
-	const QVariant *v = data(name, idx);
-	if (!v)
-		return false;
-	*val = v->toInt(&ok);
-
-	return ok;
-}
-
-bool ISO8211::Field::subfield(const char *name, uint *val, int idx) const
-{
-	bool ok;
-
-	const QVariant *v = data(name, idx);
-	if (!v)
-		return false;
-	*val = v->toUInt(&ok);
-
-	return ok;
-}
-
-bool ISO8211::Field::subfield(const char *name, QByteArray *val, int idx) const
-{
-	const QVariant *v = data(name, idx);
-	if (!v)
-		return false;
-	*val = v->toByteArray();
-
-	return true;
-}
 
 ISO8211::SubFieldDefinition ISO8211::fieldType(const QString &str, int cnt)
 {
@@ -96,11 +44,21 @@ ISO8211::SubFieldDefinition ISO8211::fieldType(const QString &str, int cnt)
 		return SubFieldDefinition();
 }
 
+const ISO8211::Field *ISO8211::Record::field(quint32 name) const
+{
+	for (int i = 0; i < size(); i++)
+		if (at(i).tag() == name)
+			return &at(i);
+
+	return 0;
+}
+
 int ISO8211::readDR(QVector<FieldDefinition> &fields)
 {
 	DR ddr;
 	QByteArray fieldLen, fieldPos;
 	int len, lenSize, posSize, tagSize, offset;
+	char tag[4];
 
 	static_assert(sizeof(ddr) == 24, "Invalid DR alignment");
 	if (_file.read((char*)&ddr, sizeof(ddr)) != sizeof(ddr))
@@ -115,25 +73,26 @@ int ISO8211::readDR(QVector<FieldDefinition> &fields)
 	if (len < 0 || offset < 0 || lenSize < 0 || posSize < 0 || tagSize < 0)
 		return -1;
 
-	fields.resize((offset - 1 - sizeof(DR)) / (lenSize + posSize + tagSize));
+	fields.resize((offset - 1 - sizeof(ddr)) / (lenSize + posSize + tagSize));
 	fieldLen.resize(lenSize);
 	fieldPos.resize(posSize);
 
 	for (int i = 0; i < fields.size(); i++) {
 		FieldDefinition &r = fields[i];
 
-		r.tag.resize(tagSize);
-
-		if (_file.read(r.tag.data(), tagSize) != tagSize
+		if (_file.read(tag, sizeof(tag)) != tagSize
 		  || _file.read(fieldLen.data(), lenSize) != lenSize
 		  || _file.read(fieldPos.data(), posSize) != posSize)
 			return -1;
 
-		r.pos = offset + Util::str2int(fieldPos.constData(), posSize);
+		r.tag = qFromLittleEndian<quint32>(tag);
+		r.pos = Util::str2int(fieldPos.constData(), posSize);
 		r.size = Util::str2int(fieldLen.constData(), lenSize);
 
 		if (r.pos < 0 || r.size < 0)
 			return -1;
+
+		r.pos += offset;
 	}
 
 	return len;
@@ -141,13 +100,13 @@ int ISO8211::readDR(QVector<FieldDefinition> &fields)
 
 bool ISO8211::readDDA(const FieldDefinition &def, SubFields &fields)
 {
-	static QRegularExpression re("(\\d*)(\\w+)\\(*(\\d*)\\)*");
-	QByteArray ba;
+	static const QRegularExpression re(
+	  "([0-9]*)(A|I|R|B|b11|b12|b14|b21|b22|b24)\\(*([0-9]*)\\)*");
+	QByteArray ba(def.size, Qt::Initialization::Uninitialized);
 	bool repeat = false;
 	QVector<SubFieldDefinition> defs;
-	QVector<QByteArray> defTags;
+	QVector<quint32> defTags;
 
-	ba.resize(def.size);
 	if (!(_file.seek(def.pos) && _file.read(ba.data(), ba.size()) == ba.size()))
 		return false;
 
@@ -156,9 +115,9 @@ bool ISO8211::readDDA(const FieldDefinition &def, SubFields &fields)
 		repeat = true;
 		list[1].remove(0, 1);
 	}
-	QList<QByteArray> tags(list.at(1).split('!'));
 
 	if (list.size() > 2) {
+		QList<QByteArray> tags(list.at(1).split('!'));
 		QRegularExpressionMatchIterator it = re.globalMatch(list.at(2));
 		int tag = 0;
 
@@ -188,11 +147,17 @@ bool ISO8211::readDDA(const FieldDefinition &def, SubFields &fields)
 				SubFieldDefinition sfd(fieldType(typeStr, size));
 				if (sfd.type() == Unknown)
 					return false;
+				if (tag >= tags.size())
+					return false;
 				defs[tag] = sfd;
-				defTags[tag] = tags.at(tag);
+				defTags[tag] = (tags.at(tag).length() == 4)
+				  ? qFromLittleEndian<quint32>(tags.at(tag).constData()) : 0;
 				tag++;
 			}
 		}
+
+		if (tag != tags.size())
+			return false;
 	}
 
 	fields = SubFields(defTags, defs, repeat);
@@ -219,7 +184,7 @@ bool ISO8211::readDDR()
 		SubFields def;
 		if (!readDDA(fields.at(i), def)) {
 			_errorString = QString("Error reading %1 DDA field")
-			  .arg(QString(fields.at(i).tag));
+			  .arg(NAME(fields.at(i).tag));
 			return false;
 		}
 		_map.insert(fields.at(i).tag, def);
@@ -236,9 +201,8 @@ bool ISO8211::readDDR()
 bool ISO8211::readUDA(quint64 pos, const FieldDefinition &def,
   const QVector<SubFieldDefinition> &fields, bool repeat, Data &data)
 {
-	QByteArray ba;
+	QByteArray ba(def.size, Qt::Initialization::Uninitialized);
 
-	ba.resize(def.size);
 	if (!(_file.seek(pos + def.pos)
 	  && _file.read(ba.data(), ba.size()) == ba.size()))
 		return false;
@@ -248,8 +212,7 @@ bool ISO8211::readUDA(quint64 pos, const FieldDefinition &def,
 	const char *ep = ba.constData() + ba.size() - 1;
 
 	do {
-		QVector<QVariant> row;
-		row.resize(fields.size());
+		QVector<QVariant> row(fields.size());
 
 		for (int i = 0; i < fields.size(); i++) {
 			const SubFieldDefinition &f = fields.at(i);
@@ -273,11 +236,11 @@ bool ISO8211::readUDA(quint64 pos, const FieldDefinition &def,
 					dp++;
 					break;
 				case S16:
-					row[i] = QVariant(INT16(dp));
+					row[i] = QVariant(qFromLittleEndian<qint16>(dp));
 					dp += 2;
 					break;
 				case S32:
-					row[i] = QVariant(INT32(dp));
+					row[i] = QVariant(qFromLittleEndian<qint32>(dp));
 					dp += 4;
 					break;
 				case U8:
@@ -285,11 +248,11 @@ bool ISO8211::readUDA(quint64 pos, const FieldDefinition &def,
 					dp++;
 					break;
 				case U16:
-					row[i] = QVariant(UINT16(dp));
+					row[i] = QVariant(qFromLittleEndian<quint16>(dp));
 					dp += 2;
 					break;
 				case U32:
-					row[i] = QVariant(UINT32(dp));
+					row[i] = QVariant(qFromLittleEndian<quint32>(dp));
 					dp += 4;
 					break;
 				default:
@@ -305,12 +268,8 @@ bool ISO8211::readUDA(quint64 pos, const FieldDefinition &def,
 
 bool ISO8211::readRecord(Record &record)
 {
-	if (_file.atEnd())
-		return false;
-
 	QVector<FieldDefinition> fields;
 	qint64 pos = _file.pos();
-
 
 	if (readDR(fields) < 0) {
 		_errorString = "Error reading DR";
@@ -325,28 +284,24 @@ bool ISO8211::readRecord(Record &record)
 
 		FieldsMap::const_iterator it(_map.find(def.tag));
 		if (it == _map.constEnd()) {
-			_errorString = QString("%1: unknown record").arg(QString(def.tag));
+			_errorString = QString("%1: unknown record").arg(NAME(def.tag));
 			return false;
 		}
 
 		if (!readUDA(pos, def, it->defs(), it->repeat(), data)) {
-			_errorString = QString("Error reading %1 record")
-			  .arg(QString(def.tag));
+			_errorString = QString("Error reading %1 record").arg(NAME(def.tag));
 			return false;
 		}
 
-		record[i] = Field(def.tag, it->tags(), data);
+		record[i] = Field(def.tag, data);
 	}
 
 	return true;
 }
 
-
-const ISO8211::Field *ISO8211::field(const Record &record, const QByteArray &name)
+QString ISO8211::NAME(quint32 tag)
 {
-	for (int i = 0; i < record.size(); i++)
-		if (record.at(i).tag() == name)
-			return &record.at(i);
-
-	return 0;
+	char buffer[sizeof(quint32)];
+	qToLittleEndian<quint32>(tag, buffer);
+	return QString::fromLatin1(buffer, sizeof(buffer));
 }

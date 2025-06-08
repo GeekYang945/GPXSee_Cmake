@@ -10,13 +10,6 @@
 #include "markeritem.h"
 #include "pathitem.h"
 
-
-#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
-#define INTERSECTS intersect
-#else // QT 5.15
-#define INTERSECTS intersects
-#endif // QT 5.15
-
 #define GEOGRAPHICAL_MILE 1855.3248
 
 Units PathItem::_units = Metric;
@@ -79,14 +72,14 @@ bool PathItem::addSegment(const Coordinates &c1, const Coordinates &c2)
 			QLineF l(QPointF(c1.lon(), c1.lat()), QPointF(c2.lon() + 360,
 			  c2.lat()));
 			QLineF dl(QPointF(180, -90), QPointF(180, 90));
-			l.INTERSECTS(dl, &p);
+			l.intersects(dl, &p);
 			_painterPath.lineTo(_map->ll2xy(Coordinates(180, p.y())));
 			_painterPath.moveTo(_map->ll2xy(Coordinates(-180, p.y())));
 		} else {
 			QLineF l(QPointF(c1.lon(), c1.lat()), QPointF(c2.lon() - 360,
 			  c2.lat()));
 			QLineF dl(QPointF(-180, -90), QPointF(-180, 90));
-			l.INTERSECTS(dl, &p);
+			l.intersects(dl, &p);
 			_painterPath.lineTo(_map->ll2xy(Coordinates(-180, p.y())));
 			_painterPath.moveTo(_map->ll2xy(Coordinates(180, p.y())));
 		}
@@ -395,9 +388,9 @@ void PathItem::drawMarkerBackground(bool draw)
 	_markerInfo->drawBackground(draw);
 }
 
-void PathItem::hover(bool hover)
+void PathItem::hover(bool hvr)
 {
-	if (hover) {
+	if (hvr) {
 		_pen.setWidth((width() + 1) * pow(2, -_digitalZoom));
 		setZValue(zValue() + 1.0);
 	} else {
@@ -406,6 +399,12 @@ void PathItem::hover(bool hover)
 	}
 
 	update();
+}
+
+void PathItem::hoverAll(bool hvr)
+{
+	hover(hvr);
+	emit selected(hvr);
 }
 
 void PathItem::showMarker(bool show)

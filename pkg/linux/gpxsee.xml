@@ -188,6 +188,38 @@
 		<glob pattern="*.wpt"/>
 	</mime-type>
 
+	<mime-type type="application/vnd.70mai.txt">
+		<comment>70mai GPS Log File</comment>
+		<sub-class-of type="text/plain"/>
+		<generic-icon name="text/plain"/>
+		<magic>
+			<match type="string" offset="0" value="$V02"/>
+		</magic>
+		<glob pattern="*.txt"/>
+	</mime-type>
+
+	<mime-type type="application/vnd.velocitek.vtk">
+		<comment>Velocitek VTK File</comment>
+		<sub-class-of type="application/octet-stream"/>
+		<generic-icon name="application/octet-stream"/>
+		<glob pattern="*.vtk"/>
+	</mime-type>
+
+	<mime-type type="application/vnd.vakaros.vkx">
+		<comment>Vakaros VKX File</comment>
+		<sub-class-of type="application/octet-stream"/>
+		<generic-icon name="application/octet-stream"/>
+		<magic>
+			<match type="big16" offset="0" value="0xFF00"/>
+			<match type="big16" offset="0" value="0xFF01"/>
+			<match type="big16" offset="0" value="0xFF02"/>
+			<match type="big16" offset="0" value="0xFF03"/>
+			<match type="big16" offset="0" value="0xFF04"/>
+			<match type="big16" offset="0" value="0xFF05"/>
+		</magic>
+		<glob pattern="*.vkx"/>
+	</mime-type>
+
 	<!-- Maps -->
 
 	<mime-type type="application/vnd.garmin.img">

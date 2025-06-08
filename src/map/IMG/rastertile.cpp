@@ -1,6 +1,7 @@
 #include <QFont>
 #include <QPainter>
 #include <QCache>
+#include "common/util.h"
 #include "map/dem.h"
 #include "map/textpathitem.h"
 #include "map/textpointitem.h"
@@ -17,17 +18,13 @@ using namespace IMG;
 
 #define TEXT_EXTENT 160
 #define ICON_PADDING 2
+#define RANGE_FACTOR 4
+#define MAJOR_RANGE  10
+#define ROAD  0
+#define WATER 1
 
 #define AREA(rect) \
 	(rect.size().width() * rect.size().height())
-
-#define HIDPI_IMG(dir, basename, ratio) \
-	(((ratio) > 1.0) \
-		? QImage(dir "/" basename "@2x.png") \
-		: QImage(dir "/" basename ".png"))
-
-#define ROAD  0
-#define WATER 1
 
 static const QColor textColor(Qt::black);
 static const QColor haloColor(Qt::white);
@@ -156,7 +153,7 @@ void RasterTile::drawPolygons(QPainter *painter,
 				bool insert = false;
 				SubFile::Handle *hdl = hc.object(poly.raster.lbl());
 				if (!hdl) {
-					hdl = new SubFile::Handle(poly.raster.lbl());
+					hdl = new SubFile::Handle(poly.raster.lbl(), _file);
 					insert = true;
 				}
 				QPixmap pm(poly.raster.lbl()->image(*hdl, poly.raster.id()));
@@ -189,6 +186,21 @@ void RasterTile::drawPolygons(QPainter *painter,
 	}
 }
 
+static quint32 lineType(quint32 type, quint32 flags)
+{
+	if (Style::isCartographicLine(type)) {
+		if (flags & MapData::Poly::Dashed)
+			return type | (flags & 0xFF000000) | 1<<20;
+		else
+			return type | (flags & 0xFF000000);
+	} else if (Style::isRecommendedRoute(type))
+		return (flags & MapData::Poly::Dashed) ? type | 1<<20 : type;
+	else if (flags & MapData::Poly::Direction)
+		return type | 2<<20;
+	else
+		return type;
+}
+
 void RasterTile::drawLines(QPainter *painter,
   const QList<MapData::Poly> &lines) const
 {
@@ -207,11 +219,15 @@ void RasterTile::drawLines(QPainter *painter,
 
 	for (int i = 0; i < lines.size(); i++) {
 		const MapData::Poly &poly = lines.at(i);
-		const Style::Line &style = _data->style()->line(poly.type);
+		const Style::Line &style = _data->style()->line(
+		  lineType(poly.type, poly.flags));
 
-		if (!style.img().isNull())
-			BitmapLine::draw(painter, poly.points, style.img());
-		else if (style.foreground() != Qt::NoPen) {
+		if (!style.img().isNull()) {
+			if (poly.flags & MapData::Poly::Invert)
+				BitmapLine::drawR(painter, poly.points, style.img());
+			else
+				BitmapLine::draw(painter, poly.points, style.img());
+		} else if (style.foreground() != Qt::NoPen) {
 			painter->setPen(style.foreground());
 			painter->drawPolyline(poly.points);
 		}
@@ -221,11 +237,93 @@ void RasterTile::drawLines(QPainter *painter,
 void RasterTile::drawTextItems(QPainter *painter,
   const QList<TextItem*> &textItems) const
 {
-	for (int i = 0; i < textItems.size(); i++)
-		textItems.at(i)->paint(painter);
+	QRectF rect(_rect);
+
+	for (int i = 0; i < textItems.size(); i++) {
+		const TextItem *ti = textItems.at(i);
+		if (rect.intersects(ti->boundingRect()))
+			ti->paint(painter);
+	}
 }
 
-static void removeDuplicitLabel(QList<TextItem *> &labels, const QString &text,
+static QRect lightRect(const QPoint &pos, quint32 range)
+{
+	quint32 r = qMin(range * RANGE_FACTOR, (quint32)TEXT_EXTENT);
+	return QRect(pos.x() - r, pos.y() - r, 2 * r, 2 * r);
+}
+
+void RasterTile::drawSectorLights(QPainter *painter,
+  const QList<const MapData::Point*> &lights) const
+{
+	for (int i = 0; i < lights.size(); i++) {
+		const MapData::Point *p = lights.at(i);
+		QPoint pos(p->coordinates.lon(), p->coordinates.lat());
+		QMap<Sector, quint32> rangeMap;
+
+		for (int j = 0; j < p->lights.size(); j++) {
+			const Light &l = p->lights.at(j);
+
+			if (l.sectors().size()) {
+				for (int k = 0; k < l.sectors().size(); k++) {
+					const Light::Sector &start = l.sectors().at(k);
+					const Light::Sector &end = (k == l.sectors().size() - 1)
+					  ? l.sectors().at(0) : l.sectors().at(k+1);
+					quint32 angle = end.angle() - start.angle();
+
+					if (start.color() && (angle || start.range() >= MAJOR_RANGE)) {
+						quint32 range = start.range() ? start.range() : 6;
+						Sector s(start.color(), start.angle(), end.angle());
+						if (rangeMap.value(s) >= range)
+							continue;
+						else
+							rangeMap.insert(s, range);
+
+						double a1 = -(end.angle() / 10.0 + 90.0);
+						double a2 = -(start.angle() / 10.0 + 90.0);
+						if (a1 > a2)
+							a2 += 360;
+						double as = (a2 - a1);
+						if (as == 0)
+							as = 360;
+
+						QRect rect(lightRect(pos, range));
+						painter->setPen(QPen(Qt::black, 6, Qt::SolidLine,
+						  Qt::FlatCap));
+						painter->drawArc(rect, a1 * 16, as * 16);
+						painter->setPen(QPen(Style::color(start.color()), 4,
+						  Qt::SolidLine, Qt::FlatCap));
+						painter->drawArc(rect, a1 * 16, as * 16);
+
+						if (angle) {
+							QLineF ln(pos, QPointF(pos.x() + rect.width(),
+							  pos.y()));
+							ln.setAngle(a1);
+							painter->setPen(QPen(Qt::black, 1, Qt::DashLine));
+							painter->drawLine(ln);
+							ln.setAngle(a2);
+							painter->drawLine(ln);
+						}
+					}
+				}
+			} else if (l.color() && l.range() >= MAJOR_RANGE) {
+				Sector s(l.color(), 0, 3600);
+				if (rangeMap.value(s) >= l.range())
+					continue;
+				else
+					rangeMap.insert(s, l.range());
+
+				QRect rect(lightRect(pos, l.range()));
+				painter->setPen(QPen(Qt::black, 6, Qt::SolidLine, Qt::FlatCap));
+				painter->drawArc(rect, 0, 360 * 16);
+				painter->setPen(QPen(Style::color(l.color()), 4, Qt::SolidLine,
+				  Qt::FlatCap));
+				painter->drawArc(rect, 0, 360 * 16);
+			}
+		}
+	}
+}
+
+static void removeDuplicitLabel(QList<TextItem*> &labels, const QString &text,
   const QRectF &tileRect)
 {
 	for (int i = 0; i < labels.size(); i++) {
@@ -304,7 +402,7 @@ void RasterTile::processStreetNames(const QList<MapData::Poly> &lines,
 		  ? &style.text().color() : Style::isContourLine(poly.type)
 			? 0 : &textColor;
 		const QColor *hColor = Style::isContourLine(poly.type) ? 0 : &haloColor;
-		const QImage *img = poly.oneway
+		const QImage *img = (poly.flags & MapData::Poly::OneWay)
 		  ? Style::isWaterLine(poly.type)
 			? &arrows[WATER] : &arrows[ROAD] : 0;
 		const QString *label = poly.label.text().isEmpty()
@@ -396,16 +494,69 @@ void RasterTile::processShields(const QList<MapData::Poly> &lines,
 	}
 }
 
+static bool sectorLight(const QVector<Light> &lights)
+{
+	for (int i = 0; i < lights.size(); i++) {
+		const Light &l = lights.at(i);
+		if (l.color() && l.range() >= MAJOR_RANGE)
+			return true;
+		for (int j = 0; j < l.sectors().size(); j++) {
+			const Light::Sector &start = l.sectors().at(j);
+			const Light::Sector &end = (j == l.sectors().size() - 1)
+			  ? l.sectors().at(0) : l.sectors().at(j+1);
+			quint32 angle = end.angle() - start.angle();
+			if (start.color() && (angle || start.range() >= MAJOR_RANGE))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+static Light::Color ordinaryLight(const QVector<Light> &lights)
+{
+	for (int i = 0; i < lights.size(); i++) {
+		const Light &l = lights.at(i);
+		if (l.color() && l.range() < MAJOR_RANGE)
+			return l.color();
+		for (int j = 0; j < l.sectors().size(); j++) {
+			const Light::Sector &start = l.sectors().at(j);
+			const Light::Sector &end = (j == l.sectors().size() - 1)
+			  ? l.sectors().at(0) : l.sectors().at(j+1);
+			quint32 angle = end.angle() - start.angle();
+			if (start.color() && !angle && start.range() < MAJOR_RANGE)
+				return start.color();
+		}
+	}
+
+	return Light::None;
+}
+
+static quint32 pointType(quint32 type, quint32 flags)
+{
+	if (Style::hasColorset(type) || Style::isDHPoint(type))
+		return type | (flags & 0xFF000000);
+	else if (Style::isLabelPoint(type))
+		return type | (flags & 0xFFF00000);
+	else
+		return type;
+}
+
 void RasterTile::processPoints(QList<MapData::Point> &points,
-  QList<TextItem*> &textItems)
+  QList<TextItem*> &textItems, QList<TextItem*> &lights,
+  QList<const MapData::Point*> &sectorLights)
 {
 	std::sort(points.begin(), points.end());
 
 	for (int i = 0; i < points.size(); i++) {
 		const MapData::Point &point = points.at(i);
 		const Style *style = _data->style();
-		const Style::Point &ps = style->point(point.type);
+		const Style::Point &ps = style->point(pointType(point.type, point.flags));
 		bool poi = Style::isPOI(point.type);
+		bool sl = sectorLight(point.lights);
+
+		if (sl)
+			sectorLights.append(&point);
 
 		const QString *label = point.label.text().isEmpty()
 		  ? 0 : &(point.label.text());
@@ -427,11 +578,12 @@ void RasterTile::processPoints(QList<MapData::Point> &points,
 
 		TextPointItem *item = new TextPointItem(pos + offset, label, fnt, img,
 		  color, hcolor, 0, ICON_PADDING);
-		if (item->isValid() && !item->collides(textItems)) {
+		if (item->isValid() && (sl || !item->collides(textItems))) {
 			textItems.append(item);
-			if (Style::isLight(point.type) || point.flags & MapData::Point::Light)
-				textItems.append(new TextPointItem(pos + style->lightOffset(),
-				  0, 0, style->light(), 0, 0, 0, 0));
+			Light::Color color = ordinaryLight(point.lights);
+			if (color)
+				lights.append(new TextPointItem(pos + style->lightOffset(),
+				  0, 0, style->light(color), 0, 0, 0, 0));
 		} else
 			delete item;
 	}
@@ -442,11 +594,20 @@ void RasterTile::fetchData(QList<MapData::Poly> &polygons,
 {
 	QPoint ttl(_rect.topLeft());
 
+	if (dynamic_cast<IMGData*>(_data)) {
+		_file = new QFile(_data->fileName());
+		if (!_file->open(QIODevice::ReadOnly | QIODevice::Unbuffered)) {
+			qWarning("%s: %s", qUtf8Printable(_file->fileName()),
+			  qUtf8Printable(_file->errorString()));
+			return;
+		}
+	}
+
 	QRectF polyRect(ttl, QPointF(ttl.x() + _rect.width(), ttl.y()
 	  + _rect.height()));
 	RectD polyRectD(_transform.img2proj(polyRect.topLeft()),
 	  _transform.img2proj(polyRect.bottomRight()));
-	_data->polys(polyRectD.toRectC(_proj, 20), _zoom,
+	_data->polys(_file, polyRectD.toRectC(_proj, 20), _zoom,
 	  &polygons, _vectors ? &lines : 0);
 
 	if (_vectors) {
@@ -455,7 +616,7 @@ void RasterTile::fetchData(QList<MapData::Poly> &polygons,
 		  + TEXT_EXTENT));
 		RectD pointRectD(_transform.img2proj(pointRect.topLeft()),
 		  _transform.img2proj(pointRect.bottomRight()));
-		_data->points(pointRectD.toRectC(_proj, 20), _zoom, &points);
+		_data->points(_file, pointRectD.toRectC(_proj, 20), _zoom, &points);
 	}
 }
 
@@ -473,22 +634,18 @@ MatrixD RasterTile::elevation(int extend) const
 
 	if (_data->hasDEM()) {
 		RectC rect;
-		QList<MapData::Elevation> tiles;
-
 		for (int i = 0; i < ll.size(); i++)
 			rect = rect.united(ll.at(i));
-		// Extra margin for always including the next DEM tile on the map tile
-		// edges (the DEM tile resolution is usally 0.5-15% of the map tile)
+		/* Extra margin for always including the next DEM tile on the map tile
+		   edges (the DEM tile resolution is usally 0.5-15% of the map tile) */
 		double factor = 6 - (_zoom - 24) * 1.7;
-		_data->elevations(rect.adjusted(0, 0, rect.width() / factor,
-		  -rect.height() / factor), _zoom, &tiles);
+		RectC br(rect.adjusted(0, 0, rect.width() / factor, -rect.height()
+		  / factor));
 
-		DEMTree tree(tiles);
-		MatrixD m(ll.h(), ll.w());
-		for (int i = 0; i < ll.size(); i++)
-			m.at(i) = tree.elevation(ll.at(i));
+		QList<MapData::Elevation> tiles;
+		_data->elevations(_file, br, _zoom, &tiles);
 
-		return m;
+		return DEMTree(tiles).elevation(ll);
 	} else
 		return DEM::elevation(ll);
 }
@@ -514,18 +671,19 @@ void RasterTile::render()
 	QList<MapData::Poly> polygons;
 	QList<MapData::Poly> lines;
 	QList<MapData::Point> points;
-	QList<TextItem*> textItems;
+	QList<TextItem*> textItems, lights;
+	QList<const MapData::Point*> sectorLights;
 	QImage arrows[2];
 
-	arrows[ROAD] = HIDPI_IMG(":/map", "arrow", _ratio);
-	arrows[WATER] = HIDPI_IMG(":/map", "water-arrow", _ratio);
+	arrows[ROAD] = Util::svg2img(":/symbols/oneway.svg", _ratio);
+	arrows[WATER] = Util::svg2img(":/symbols/flow.svg", _ratio);
 
 	fetchData(polygons, lines, points);
 	ll2xy(polygons);
 	ll2xy(lines);
 	ll2xy(points);
 
-	processPoints(points, textItems);
+	processPoints(points, textItems, lights, sectorLights);
 	processPolygons(polygons, textItems);
 	processLines(lines, textItems, arrows);
 
@@ -540,8 +698,11 @@ void RasterTile::render()
 	drawPolygons(&painter, polygons);
 	drawHillShading(&painter);
 	drawLines(&painter, lines);
+	drawTextItems(&painter, lights);
+	drawSectorLights(&painter, sectorLights);
 	drawTextItems(&painter, textItems);
 
+	qDeleteAll(lights);
 	qDeleteAll(textItems);
 
 	//painter.setPen(Qt::red);

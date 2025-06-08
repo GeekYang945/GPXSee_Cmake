@@ -1,6 +1,7 @@
 #include <QPainter>
 #include <QImage>
 #include <QtMath>
+#include <QPainterPath>
 #include "bitmapline.h"
 
 
@@ -52,9 +53,49 @@ void BitmapLine::draw(QPainter *painter, const QPolygonF &line,
 	}
 }
 
+void BitmapLine::drawR(QPainter *painter, const QPolygonF &line,
+  const QImage &img)
+{
+	int offset = 0;
+
+	for (int i = line.size() - 1; i > 0; i--) {
+		QLineF segment(line.at(i).x(), line.at(i).y(), line.at(i-1).x(),
+		  line.at(i-1).y());
+		int len = qCeil(segment.length() * img.devicePixelRatio());
+
+		painter->save();
+		painter->translate(segment.p1());
+		painter->rotate(-segment.angle());
+		painter->drawImage(0.0, -img.height()/2.0, img2line(img, len, offset));
+		painter->restore();
+
+		offset = (len + offset) % img.width();
+	}
+}
+
 void BitmapLine::draw(QPainter *painter, const QVector<QPolygonF> &lines,
   const QImage &img)
 {
 	for (int i = 0; i < lines.size(); i++)
 		draw(painter, lines.at(i), img);
+}
+
+void BitmapLine::draw(QPainter *painter, const QPainterPath &line,
+  const QImage &img)
+{
+	int offset = 0;
+
+	for (int i = 1; i < line.elementCount(); i++) {
+		QLineF segment(line.elementAt(i-1).x, line.elementAt(i-1).y,
+		  line.elementAt(i).x, line.elementAt(i).y);
+		int len = qCeil(segment.length() * img.devicePixelRatio());
+
+		painter->save();
+		painter->translate(segment.p1());
+		painter->rotate(-segment.angle());
+		painter->drawImage(0.0, -img.height()/2.0, img2line(img, len, offset));
+		painter->restore();
+
+		offset = (len + offset) % img.width();
+	}
 }

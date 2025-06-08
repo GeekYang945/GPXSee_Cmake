@@ -37,7 +37,9 @@ public:
 	};
 
 	struct Point {
-		Point(const Coordinates &c) : id(qHash(c)), coordinates(c) {}
+		Point(quint64 id) : id(id) {}
+
+		bool center() const {return (id & 1ULL<<63) != 0;}
 
 		quint64 id;
 		Coordinates coordinates;
@@ -46,24 +48,25 @@ public:
 	};
 
 	struct Path {
+		Path(quint64 id) : point(id | 1ULL<<63) {}
+
+		Point point;
 		Polygon poly;
-		QVector<Tag> tags;
-		Coordinates labelPos;
-		int layer;
 		bool closed;
 
 		bool operator<(const Path &other) const
-		  {return layer < other.layer;}
+		  {return point.layer < other.point.layer;}
 	};
 
+	const QString &fileName() const {return _fileName;}
 	RectC bounds() const;
 	Range zooms() const
 	  {return Range(_subFiles.first().min, _subFiles.last().max);}
 	int tileSize() const {return _tileSize;}
 
-	void points(const RectC &rect, int zoom, QList<Point> *list);
-	void paths(const RectC &searchRect, const RectC &boundsRect, int zoom,
-	  QList<Path> *set);
+	void points(QFile &file, const RectC &rect, int zoom, QList<Point> *list);
+	void paths(QFile &file, const RectC &searchRect, const RectC &boundsRect,
+	  int zoom, QList<Path> *set);
 	unsigned tagId(const QByteArray &name) const {return _keys.value(name);}
 
 	void load();
@@ -87,12 +90,15 @@ private:
 
 		size_t offset;
 		Coordinates pos;
+		QMutex lock;
 	};
 
 	struct PathCTX {
-		PathCTX(MapData *data, const RectC &rect, int zoom, QList<Path> *list)
-		  : data(data), rect(rect), zoom(zoom), list(list) {}
+		PathCTX(QFile &file, MapData *data, const RectC &rect, int zoom,
+		  QList<Path> *list)
+		  : file(file), data(data), rect(rect), zoom(zoom), list(list) {}
 
+		QFile &file;
 		MapData *data;
 		const RectC &rect;
 		int zoom;
@@ -100,9 +106,11 @@ private:
 	};
 
 	struct PointCTX {
-		PointCTX(MapData *data, const RectC &rect, int zoom, QList<Point> *list)
-		  : data(data), rect(rect), zoom(zoom), list(list) {}
+		PointCTX(QFile &file, MapData *data, const RectC &rect, int zoom,
+		  QList<Point> *list)
+		  : file(file), data(data), rect(rect), zoom(zoom), list(list) {}
 
+		QFile &file;
 		MapData *data;
 		const RectC &rect;
 		int zoom;
@@ -141,16 +149,18 @@ private:
 	bool readTagInfo(SubFile &hdr, QVector<TagSource> &tags);
 	bool readMapInfo(SubFile &hdr, QByteArray &projection, bool &debugMap);
 	bool readHeader(QFile &file);
-	bool readSubFiles();
+	bool readSubFiles(QFile &file);
 	void clearTiles();
 
 	int level(int zoom) const;
-	void paths(const VectorTile *tile, const RectC &rect, int zoom,
+	void paths(QFile &file, VectorTile *tile, const RectC &rect, int zoom,
 	  QList<Path> *list);
-	void points(const VectorTile *tile, const RectC &rect, int zoom,
+	void points(QFile &file, VectorTile *tile, const RectC &rect, int zoom,
 	  QList<Point> *list);
-	bool readPaths(const VectorTile *tile, int zoom, QList<Path> *list);
-	bool readPoints(const VectorTile *tile, int zoom, QList<Point> *list);
+	bool readPaths(QFile &file, const VectorTile *tile, int zoom,
+	  QList<Path> *list);
+	bool readPoints(QFile &file, const VectorTile *tile, int zoom,
+	  QList<Point> *list);
 
 	static bool readTags(SubFile &subfile, int count,
 	  const QVector<TagSource> &tags, QVector<Tag> &list);
@@ -159,7 +169,7 @@ private:
 
 	friend HASH_T qHash(const MapData::Key &key);
 
-	QFile _pointFile, _pathFile;
+	QString _fileName;
 	RectC _bounds;
 	quint16 _tileSize;
 	QVector<SubFileInfo> _subFiles;
@@ -169,7 +179,7 @@ private:
 
 	QCache<Key, QList<Path> > _pathCache;
 	QCache<Key, QList<Point> > _pointCache;
-	QMutex _pathLock, _pointLock;
+	QMutex _pathCacheLock, _pointCacheLock;
 
 	bool _valid;
 	QString _errorString;

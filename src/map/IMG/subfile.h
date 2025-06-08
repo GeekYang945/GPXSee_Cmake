@@ -5,8 +5,7 @@
 #include <QFile>
 #include "imgdata.h"
 
-
-#define BLOCK_BITS 12 /* 4096 bytes */
+#define BLOCK_BITS 9 /* 512 bytes */
 
 namespace IMG {
 
@@ -18,37 +17,53 @@ public:
 	class Handle
 	{
 	public:
-		Handle(const SubFile *subFile)
-		  : _blockNum(-1), _blockPos(-1), _pos(-1)
+		Handle(const SubFile *subFile, QFile *file = 0)
+		  : _file(file), _blockNum(-1), _blockPos(-1), _pos(-1), _delete(false)
 		{
 			if (!subFile)
 				return;
 
+			if (!_file) {
+				_file = new QFile(subFile->fileName());
+				if (!_file->open(QIODevice::ReadOnly | QIODevice::Unbuffered))
+					qWarning("%s: %s", qUtf8Printable(_file->fileName()),
+					  qUtf8Printable(_file->errorString()));
+				_delete = true;
+			}
 			_data.resize(subFile->blockSize());
-			_file.setFileName(subFile->fileName());
-			_file.open(QIODevice::ReadOnly | QIODevice::Unbuffered);
+		}
+		~Handle()
+		{
+			if (_delete)
+				delete _file;
 		}
 
 	private:
 		friend class SubFile;
 
-		QFile _file;
+		QFile *_file;
 		QByteArray _data;
 		int _blockNum;
 		int _blockPos;
 		int _pos;
+		bool _delete;
 	};
 
 	SubFile(const IMGData *img)
 	  : _gmpOffset(0), _img(img), _blocks(new QVector<quint16>()), _path(0) {}
 	SubFile(const SubFile *gmp, quint32 offset) : _gmpOffset(offset),
-	  _img(gmp->_img), _blocks(gmp->_blocks), _path(gmp->_path) {}
-	SubFile(const QString *path)
-	  : _gmpOffset(0), _img(0), _blocks(0), _path(path) {}
+	  _img(gmp->_img), _blocks(gmp->_blocks), _path(gmp->_path)
+	{
+		Q_ASSERT(offset);
+	}
+	SubFile(const QString &path)
+	  : _gmpOffset(0), _img(0), _blocks(0), _path(new QString(path)) {}
 	~SubFile()
 	{
-		if (!_gmpOffset)
+		if (!_gmpOffset) {
 			delete _blocks;
+			delete _path;
+		}
 	}
 
 	void addBlock(quint16 block) {_blocks->append(block);}
@@ -154,7 +169,7 @@ public:
 		return true;
 	}
 
-	bool readVUInt32(Handle &hdl, quint32 &val) const;
+	bool readVUInt32(Handle &hdl, quint32 &val, quint32 *size = 0) const;
 	bool readVUInt32(Handle &hdl, quint32 bytes, quint32 &val) const;
 	bool readVBitfield32(Handle &hdl, quint32 &bitfield) const;
 

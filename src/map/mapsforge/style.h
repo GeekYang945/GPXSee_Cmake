@@ -18,11 +18,8 @@ public:
 	public:
 		Rule() : _type(AnyType), _closed(AnyClosed), _zooms(0, 127) {}
 
-		bool match(const QVector<MapData::Tag> &tags) const;
-		bool match(bool closed, const QVector<MapData::Tag> &tags) const;
-		bool match(int zoom, bool closed,
-		  const QVector<MapData::Tag> &tags) const;
-		bool match(int zoom, const QVector<MapData::Tag> &tags) const;
+		bool match(bool path, const QVector<MapData::Tag> &tags) const;
+		bool matchPath(bool closed, const QVector<MapData::Tag> &tags) const;
 
 	private:
 		enum Type {
@@ -41,7 +38,7 @@ public:
 
 		class Filter {
 		public:
-			Filter() : _neg(false) {}
+			Filter() : _neg(false), _excl(false) {}
 			Filter(const MapData &data, const QList<QByteArray> &keys,
 			  const QList<QByteArray> &vals);
 
@@ -50,14 +47,15 @@ public:
 				if (_neg) {
 					if (!keyMatches(tags))
 						return true;
-					return valueMatches(tags);
+					return valueMatches(tags) ^ _excl;
 				} else
-					return (keyMatches(tags) && valueMatches(tags));
+					return (keyMatches(tags) && (valueMatches(tags) ^ _excl));
 			}
 
 			bool isTautology() const
 			{
-				return (!_neg && _keys.contains(0u) && _vals.contains(QByteArray()));
+				return (!_neg && !_excl && _keys.contains(0u)
+				  && _vals.contains(QByteArray()));
 			}
 
 		private:
@@ -89,7 +87,7 @@ public:
 
 			QList<unsigned> _keys;
 			QList<QByteArray> _vals;
-			bool _neg;
+			bool _neg, _excl;
 		};
 
 		void setType(Type type)
@@ -109,8 +107,12 @@ public:
 			if (!filter.isTautology())
 				_filters.append(filter);
 		}
+
 		bool match(int zoom, Type type, Closed closed,
 		  const QVector<MapData::Tag> &tags) const;
+		bool match(int zoom, bool closed,
+		  const QVector<MapData::Tag> &tags) const;
+		bool match(int zoom, const QVector<MapData::Tag> &tags) const;
 
 		friend class Style;
 
@@ -161,6 +163,8 @@ public:
 		bool area() const {return _area;}
 		bool curve() const {return _curve;}
 		qreal dy(int zoom) const;
+		const QImage &img() const {return _img;}
+		bool bitmapLine() const {return !_img.isNull() && _strokeWidth == 0;}
 
 	private:
 		friend class Style;
@@ -207,7 +211,7 @@ public:
 	public:
 		TextRender(const Rule &rule)
 		  : Render(rule), _priority(0), _fillColor(Qt::black),
-		  _strokeColor(Qt::black), _strokeWidth(0) {}
+		  _strokeColor(Qt::black), _strokeWidth(0), _shield(false) {}
 
 		const QString &symbolId() const {return _symbolId;}
 		const QFont &font() const {return _font;}
@@ -216,6 +220,10 @@ public:
 		qreal strokeWidth() const {return _strokeWidth;}
 		unsigned key() const {return _key;}
 		int priority() const {return _priority;}
+		bool shield() const {return _shield;}
+
+		bool operator<(const TextRender &other) const
+		  {return _priority > other._priority;}
 
 	private:
 		friend class Style;
@@ -225,6 +233,7 @@ public:
 		QColor _fillColor, _strokeColor;
 		qreal _strokeWidth;
 		QFont _font;
+		bool _shield;
 		unsigned _key;
 	};
 
@@ -238,6 +247,9 @@ public:
 		const QImage &img() const {return _img;}
 		bool rotate() const {return _rotate;}
 		int priority() const {return _priority;}
+
+		bool operator<(const Symbol &other) const
+		  {return _priority > other._priority;}
 
 	private:
 		friend class Style;
@@ -256,9 +268,9 @@ public:
 	QList<const CircleRender *> circles(int zoom,
 	  const QVector<MapData::Tag> &tags) const;
 	QList<const TextRender*> pathLabels(int zoom) const;
-	QList<const TextRender*> pointLabels(int zoom) const;
+	QList<const TextRender*> labels(int zoom) const;
 	QList<const TextRender*> areaLabels(int zoom) const;
-	QList<const Symbol*> pointSymbols(int zoom) const;
+	QList<const Symbol*> symbols(int zoom) const;
 	QList<const Symbol*> areaSymbols(int zoom) const;
 	QList<const Symbol*> lineSymbols(int zoom) const;
 	const HillShadingRender *hillShading(int zoom) const;
@@ -307,7 +319,7 @@ private:
 	HillShadingRender _hillShading;
 	QList<PathRender> _paths;
 	QList<CircleRender> _circles;
-	QList<TextRender> _pathLabels, _pointLabels, _areaLabels;
+	QList<TextRender> _labels, _pathLabels;
 	QList<Symbol> _symbols, _lineSymbols;
 
 	bool loadXml(const QString &path, const MapData &data, qreal ratio);
@@ -327,9 +339,9 @@ private:
 	  const Rule &rule);
 	void hillshading(QXmlStreamReader &reader, const QSet<QString> &cats);
 	void text(QXmlStreamReader &reader, const MapData &data, const Rule &rule,
-	  QList<QList<TextRender> *> &lists);
+	  bool line);
 	void symbol(QXmlStreamReader &reader, const QString &dir, qreal ratio,
-	  const Rule &rule, QList<Symbol> &list);
+	  const Rule &rule, bool line);
 };
 
 }

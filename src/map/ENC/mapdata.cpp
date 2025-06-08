@@ -1,3 +1,4 @@
+#include <QtEndian>
 #include "GUI/units.h"
 #include "objects.h"
 #include "attributes.h"
@@ -13,6 +14,15 @@ using namespace ENC;
 #define PRIM_P 1
 #define PRIM_L 2
 #define PRIM_A 3
+
+constexpr quint32 SG2D = ISO8211::TAG("SG2D");
+constexpr quint32 SG3D = ISO8211::TAG("SG3D");
+constexpr quint32 FSPT = ISO8211::TAG("FSPT");
+constexpr quint32 VRPT = ISO8211::TAG("VRPT");
+constexpr quint32 ATTF = ISO8211::TAG("ATTF");
+constexpr quint32 VRID = ISO8211::TAG("VRID");
+constexpr quint32 FRID = ISO8211::TAG("FRID");
+constexpr quint32 DSPM = ISO8211::TAG("DSPM");
 
 static QMap<uint,uint> orderMapInit()
 {
@@ -60,19 +70,24 @@ static QMap<uint,uint> orderMapInit()
 	map.insert(TYPE(I_TRNBSN), 32);
 	map.insert(TYPE(HRBFAC), 33);
 	map.insert(TYPE(I_HRBFAC), 33);
-	map.insert(TYPE(PILPNT), 34);
-	map.insert(TYPE(ACHBRT), 35);
-	map.insert(TYPE(I_ACHBRT), 35);
-	map.insert(TYPE(CRANES), 36);
-	map.insert(TYPE(I_CRANES), 36);
-	map.insert(TYPE(I_WTWGAG), 37);
-	map.insert(TYPE(PYLONS), 38);
-	map.insert(TYPE(SLCONS), 39);
-	map.insert(TYPE(LNDMRK), 40);
-	map.insert(TYPE(SILTNK), 41);
-	map.insert(TYPE(LNDELV), 42);
-	map.insert(TYPE(SMCFAC), 43);
-	map.insert(TYPE(BUISGL), 44);
+	map.insert(TYPE(RADRFL), 34);
+	map.insert(TYPE(PILPNT), 35);
+	map.insert(TYPE(ACHBRT), 36);
+	map.insert(TYPE(I_ACHBRT), 36);
+	map.insert(TYPE(CRANES), 37);
+	map.insert(TYPE(I_CRANES), 37);
+	map.insert(TYPE(I_WTWGAG), 38);
+	map.insert(TYPE(PYLONS), 39);
+	map.insert(TYPE(SLCONS), 40);
+	map.insert(TYPE(LNDMRK), 41);
+	map.insert(TYPE(SILTNK), 42);
+	map.insert(TYPE(I_BUNSTA), 43);
+	map.insert(TYPE(LNDELV), 44);
+	map.insert(TYPE(SMCFAC), 45);
+	map.insert(TYPE(BUISGL), 46);
+	map.insert(TYPE(ACHARE), 47);
+	map.insert(TYPE(I_ACHARE), 47);
+	map.insert(TYPE(DMPGRD), 48);
 
 	map.insert(TYPE(I_DISMAR), 0xFFFFFFFE);
 	map.insert(TYPE(SOUNDG), 0xFFFFFFFF);
@@ -89,20 +104,19 @@ static uint order(uint type)
 	return (it == orderMap.constEnd()) ? (type>>16) + 512 : it.value();
 }
 
-static void warning(const ISO8211::Field &FRID, uint PRIM)
+static void warning(const ISO8211::Field &frid, uint prim)
 {
-	uint RCID = 0xFFFFFFFF;
-	FRID.subfield("RCID", &RCID);
+	uint rcid = frid.data().at(0).at(1).toUInt();
 
-	switch (PRIM) {
+	switch (prim) {
 		case PRIM_P:
-			qWarning("%u: invalid point feature", RCID);
+			qWarning("%u: invalid point feature", rcid);
 			break;
 		case PRIM_L:
-			qWarning("%u: invalid line feature", RCID);
+			qWarning("%u: invalid line feature", rcid);
 			break;
 		case PRIM_A:
-			qWarning("%u: invalid area feature", RCID);
+			qWarning("%u: invalid area feature", rcid);
 			break;
 	}
 }
@@ -131,7 +145,7 @@ static bool parseNAME(const ISO8211::Field *f, quint8 *type, quint32 *id,
 		return false;
 
 	*type = (quint8)(*ba.constData());
-	*id = UINT32(ba.constData() + 1);
+	*id = qFromLittleEndian<quint32>(ba.constData() + 1);
 
 	return true;
 }
@@ -140,9 +154,9 @@ static const ISO8211::Field *SGXD(const ISO8211::Record &r)
 {
 	const ISO8211::Field *f;
 
-	if ((f = ISO8211::field(r, "SG2D")))
+	if ((f = r.field(SG2D)))
 		return f;
-	else if ((f = ISO8211::field(r, "SG3D")))
+	else if ((f = r.field(SG3D)))
 		return f;
 	else
 		return 0;
@@ -169,12 +183,61 @@ static bool polygonCb(const MapData::Poly *polygon, void *context)
 	return true;
 }
 
-static Coordinates coordinates(int x, int y, uint COMF)
+static bool polygonPointCb(const MapData::Poly *polygon, void *context)
 {
-	return Coordinates(x / (double)COMF, y / (double)COMF);
+	QList<MapData::Point> *points = (QList<MapData::Point>*)context;
+	uint type = polygon->type();
+	uint baseType = type>>16;
+
+	if (baseType == TSSLPT || baseType == RCTLPT || baseType == I_TRNBSN
+	  || baseType == BRIDGE || baseType == I_BRIDGE || baseType == BUAARE
+	  || baseType == LNDARE || baseType == LNDRGN || baseType == I_BUNSTA
+	  || baseType == PILBOP || baseType == DMPGRD
+	  || type == SUBTYPE(ACHARE, 2) || type == SUBTYPE(I_ACHARE, 2)
+	  || type == SUBTYPE(ACHARE, 3) || type == SUBTYPE(I_ACHARE, 3)
+	  || type == SUBTYPE(ACHARE, 9) || type == SUBTYPE(I_ACHARE, 9)
+	  || type == SUBTYPE(I_ACHARE, 10) || type == SUBTYPE(I_ACHARE, 11)
+	  || type == SUBTYPE(I_ACHARE, 12) || type == SUBTYPE(I_BERTHS, 6)
+	  || type == SUBTYPE(RESARE, 1) || type == SUBTYPE(I_RESARE, 1)
+	  || type == SUBTYPE(RESARE, 2) || type == SUBTYPE(I_RESARE, 2)
+	  || type == SUBTYPE(RESARE, 3) || type == SUBTYPE(I_RESARE, 3)
+	  || type == SUBTYPE(RESARE, 4) || type == SUBTYPE(I_RESARE, 4)
+	  || type == SUBTYPE(RESARE, 5) || type == SUBTYPE(I_RESARE, 5)
+	  || type == SUBTYPE(RESARE, 6) || type == SUBTYPE(I_RESARE, 6)
+	  || type == SUBTYPE(RESARE, 7) || type == SUBTYPE(I_RESARE, 7)
+	  || type == SUBTYPE(RESARE, 8) || type == SUBTYPE(I_RESARE, 8)
+	  || type == SUBTYPE(RESARE, 9) || type == SUBTYPE(I_RESARE, 9)
+	  || type == SUBTYPE(RESARE, 12) || type == SUBTYPE(I_RESARE, 12)
+	  || type == SUBTYPE(RESARE, 14) || type == SUBTYPE(I_RESARE, 14)
+	  || type == SUBTYPE(RESARE, 17) || type == SUBTYPE(I_RESARE, 17)
+	  || type == SUBTYPE(RESARE, 22) || type == SUBTYPE(I_RESARE, 22)
+	  || type == SUBTYPE(RESARE, 23) || type == SUBTYPE(I_RESARE, 23)
+	  || type == SUBTYPE(RESARE, 25) || type == SUBTYPE(I_RESARE, 25)
+	  || type == SUBTYPE(RESARE, 26) || type == SUBTYPE(I_RESARE, 26))
+		points->append(MapData::Point(baseType, polygon->bounds().center(),
+		  polygon->attributes(), polygon->huni(), true));
+
+	return true;
 }
 
-static Coordinates point(const ISO8211::Record &r, uint COMF)
+static bool linePointCb(const MapData::Line *line, void *context)
+{
+	QList<MapData::Point> *points = (QList<MapData::Point>*)context;
+	uint baseType = line->type()>>16;
+
+	if (baseType == RDOCAL || baseType == I_RDOCAL)
+		points->append(MapData::Point(baseType, line->bounds().center(),
+		  line->attributes(), 1));
+
+	return true;
+}
+
+static Coordinates coordinates(int x, int y, uint comf)
+{
+	return Coordinates(x / (double)comf, y / (double)comf);
+}
+
+static Coordinates point(const ISO8211::Record &r, uint comf)
 {
 	const ISO8211::Field *f = SGXD(r);
 	if (!f)
@@ -183,13 +246,11 @@ static Coordinates point(const ISO8211::Record &r, uint COMF)
 	int y = f->data().at(0).at(0).toInt();
 	int x = f->data().at(0).at(1).toInt();
 
-	return coordinates(x, y, COMF);
+	return coordinates(x, y, comf);
 }
 
-static uint depthLevel(const QByteArray &ba)
+static uint depthLevel(double minDepth)
 {
-	double minDepth = ba.isEmpty() ? -1 : ba.toDouble();
-
 	if (minDepth < 0)
 		return 0;
 	else if (minDepth < 2)
@@ -254,64 +315,220 @@ static QString weed(uint type)
 	}
 }
 
-MapData::Point::Point(uint type, const Coordinates &c, const QString &label,
-  const QVector<QByteArray> &params) : _type(type), _pos(c), _label(label)
+static uint restrictionCategory(uint type, const MapData::Attributes &attr)
 {
-	_id = ((quint64)order(type))<<32 | (uint)qHash(c);
+	uint catrea = attr.value(CATREA).toUInt();
 
-	if (type>>16 == I_DISMAR && params.size()) {
-		_label = hUnits((type>>8)&0xFF) + " " + QString::fromLatin1(params.at(0));
-		_type = SUBTYPE(I_DISMAR, type & 0xFF);
-	} else if ((type>>16 == I_RDOCAL || type>>16 == RDOCAL) && params.size() > 1) {
-		if (!params.at(1).isEmpty())
-			_label = QString("VHF ") + QString::fromLatin1(params.at(1));
-		_param = QVariant(params.at(0).toDouble());
-	} else if (type>>16 == CURENT && params.size() > 1) {
-		if (!params.at(1).isEmpty())
-			_label = QString::fromLatin1(params.at(1))
-			  + QString::fromUtf8("\xE2\x80\x89kt");
-		_param = QVariant(params.at(0).toDouble());
-	} else if (type>>16 == I_SISTAT || type>>16 == SISTAT) {
+	if (!catrea) {
+		uint restrn = attr.value(
+		  (type == RESARE) ? RESTRN : I_RESTRN).toUInt();
+
+		if (restrn == 1)
+			return 2;
+		else if (restrn == 3)
+			return 3;
+		else if (restrn == 7)
+			return 17;
+		else
+			return 0;
+	} else
+		return catrea;
+}
+
+static uint color(const QList<QByteArray> &list)
+{
+	uint c = 0;
+
+	for (int i = 0, j = 0; i < list.size() && j < 4; i++) {
+		if (!(i && list.at(i) == list.at(i-1))) {
+			c |= list.at(i).toUInt() << (j * 4);
+			j++;
+		}
+	}
+
+	return c;
+}
+
+MapData::Point::Point(uint type, const Coordinates &c, const QString &label)
+  : _type(SUBTYPE(type, 0)), _pos(c), _label(label), _polygon(false)
+{
+	_id = ((quint64)order(_type))<<32 | (uint)qHash(c);
+}
+
+MapData::Point::Point(uint type, const Coordinates &c, const Attributes &attr,
+  uint HUNI, bool polygon) : _pos(c), _attr(attr), _polygon(polygon)
+{
+	uint subtype = 0;
+	bool ok;
+
+	if (type == HRBFAC)
+		subtype = CATHAF;
+	else if (type == I_HRBFAC)
+		subtype = I_CATHAF;
+	else if (type == LNDMRK)
+		subtype = CATLMK;
+	else if (type == WRECKS)
+		subtype = CATWRK;
+	else if (type == MORFAC)
+		subtype = CATMOR;
+	else if (type == UWTROC)
+		subtype = WATLEV;
+	else if (type == BUAARE)
+		subtype = CATBUA;
+	else if (type == SMCFAC)
+		subtype = CATSCF;
+	else if (type == BUISGL)
+		subtype = FUNCTN;
+	else if (type == WATTUR)
+		subtype = CATWAT;
+	else if (type == RDOCAL)
+		subtype = TRAFIC;
+	else if (type == I_RDOCAL)
+		subtype = TRAFIC;
+	else if (type == SILTNK)
+		subtype = CATSIL;
+	else if (type == WEDKLP)
+		subtype = CATWED;
+	else if (type == LIGHTS)
+		subtype = CATLIT;
+	else if (type == I_DISMAR)
+		subtype = CATDIS;
+	else if (type == I_BERTHS)
+		subtype = I_CATBRT;
+	else if (type == ACHARE)
+		subtype = CATACH;
+	else if (type == I_ACHARE)
+		subtype = I_CATACH;
+	else if (type == MARCUL)
+		subtype = CATMFA;
+	else if (type == I_BUNSTA)
+		subtype = I_CATBUN;
+	else if (type == BOYCAR || type == BOYINB || type == BOYISD
+	  || type == BOYLAT || type == I_BOYLAT || type == BOYSAW || type == BOYSPP
+	  || type == BCNCAR || type == BCNISD || type == BCNLAT || type == I_BCNLAT
+	  || type == BCNSAW || type == BCNSPP)
+		subtype = COLOUR;
+
+	QList<QByteArray> list(_attr.value(subtype).split(','));
+	if (type == RESARE || type == I_RESARE)
+		_type = SUBTYPE(type, restrictionCategory(type, _attr));
+	else if (subtype == COLOUR)
+		_type = SUBTYPE(type, color(list));
+	else {
+		std::sort(list.begin(), list.end());
+		_type = SUBTYPE(type, list.first().toUInt());
+	}
+
+	_id = ((quint64)order(_type))<<32 | (uint)qHash(c);
+	_label = QString::fromLatin1(_attr.value(OBJNAM));
+
+	if (type == I_DISMAR) {
+		if (_attr.contains(I_WTWDIS) && _attr.contains(I_HUNITS))
+			_label = hUnits(_attr.value(I_HUNITS).toUInt()) + " "
+			  + QString::fromLatin1(_attr.value(I_WTWDIS));
+	} else if (type == I_RDOCAL || type == RDOCAL) {
+		QByteArray cc(_attr.value(COMCHA));
+		if (!cc.isEmpty())
+			_label = QString("VHF ") + QString::fromLatin1(cc);
+	} else if (type == CURENT) {
+		QByteArray cv(_attr.value(CURVEL));
+		if (!cv.isEmpty())
+			_label = QString::fromLatin1(cv) + QString::fromUtf8("\xE2\x80\x89kt");
+	} else if (type == SISTAT) {
+		if (_label.isEmpty() && _attr.contains(CATSIT))
+			_label = sistat(_attr.value(CATSIT).toUInt());
+	} else if (type == I_SISTAT) {
+		if (_label.isEmpty() && _attr.contains(I_CATSIT))
+			_label = sistat(_attr.value(I_CATSIT).toUInt());
+	} else if (type == WEDKLP) {
 		if (_label.isEmpty())
-			_label = sistat(type & 0xFF);
-		_type = TYPE(SISTAT);
-	} else if (type>>16 == WEDKLP) {
+			_label = weed(_type & 0xFF);
+	} else if (type == LNDELV) {
 		if (_label.isEmpty())
-			_label = weed(type & 0xFF);
-	} else if (type>>16 == LNDELV && params.size()) {
-		if (_label.isEmpty())
-			_label = QString::fromLatin1(params.at(0))
+			_label = QString::fromLatin1(_attr.value(ELEVAT))
 			  + QString::fromUtf8("\xE2\x80\x89m");
 		else
-			_label += "\n(" + QString::fromLatin1(params.at(0))
+			_label += "\n(" + QString::fromLatin1(_attr.value(ELEVAT))
 			  + "\xE2\x80\x89m)";
+	} else if (type == BRIDGE || type == I_BRIDGE) {
+		double clr = _attr.value(VERCLR).toDouble(&ok);
+		if (ok && clr > 0)
+			_label = QString::fromUtf8("\xE2\x86\x95") + UNIT_SPACE
+			  + QString::number(clr) + UNIT_SPACE + hUnits(HUNI);
+	} else if (type == OBSTRN || type == WRECKS || type == UWTROC) {
+		double depth = _attr.value(VALSOU).toDouble(&ok);
+		if (ok && _label.isEmpty())
+			_label = QString::number(depth);
+	} else if (_type == SUBTYPE(RESARE, 8)) {
+		if (_label.isEmpty())
+			_label = "Degaussing Range";
 	}
 }
 
-MapData::Poly::Poly(uint type, const Polygon &path, const QString &label,
-  const QVector<QByteArray> &params, uint HUNI) : _type(type), _path(path)
+MapData::Poly::Poly(uint type, const Polygon &path, const Attributes &attr,
+  uint HUNI) : _path(path), _attr(attr), _huni(HUNI)
 {
-	if (type == TYPE(DEPARE) && params.size())
-		_type = SUBTYPE(DEPARE, depthLevel(params.at(0)));
-	else if (type == TYPE(TSSLPT) && params.size())
-		_param = QVariant(params.at(0).toDouble());
-	else if ((type == TYPE(BRIDGE) || type == TYPE(I_BRIDGE))
-	  && params.size()) {
-		double clr = params.at(0).toDouble();
-		if (clr > 0) {
-			_label = QString::fromUtf8("\xE2\x86\x95") + UNIT_SPACE
-			  + QString::number(clr) + UNIT_SPACE + hUnits(HUNI);
-		}
-	} else if (type>>16 == LNDARE || type>>16 == SEAARE)
-		_label = label;
+	uint subtype = 0;
+
+	if (type == ACHARE)
+		subtype = CATACH;
+	else if (type == I_ACHARE)
+		subtype = I_CATACH;
+	else if (type == HRBFAC)
+		subtype = CATHAF;
+	else if (type == MARCUL)
+		subtype = CATMFA;
+	else if (type == I_BERTHS)
+		subtype = I_CATBRT;
+	else if (type == M_COVR)
+		subtype = CATCOV;
+	else if (type == DMPGRD)
+		subtype = CATDPG;
+	else if (type == SLCONS)
+		subtype = CATSLC;
+	else if (type == I_SLCONS)
+		subtype = I_CATSLC;
+	else if (type == ADMARE)
+		subtype = JRSDTN;
+
+	switch (type) {
+		case DEPARE:
+			_type = SUBTYPE(type, depthLevel(_attr.value(DRVAL1).toDouble()));
+			break;
+		case RESARE:
+		case I_RESARE:
+			_type = SUBTYPE(type, restrictionCategory(type, attr));
+			break;
+		default:
+			_type = SUBTYPE(type, _attr.value(subtype).toUInt());
+	}
+
 }
 
 MapData::Line::Line(uint type, const QVector<Coordinates> &path,
-  const QString &label, const QVector<QByteArray> &params)
-  : _type(type), _path(path), _label(label)
+  const Attributes &attr) : _path(path), _attr(attr)
 {
-	if ((type == TYPE(DEPCNT) || type == TYPE(LNDELV)) && params.size())
-		_label = QString::fromLatin1(params.at(0));
+	uint subtype = 0;
+
+	if (type == RECTRC)
+		subtype = CATTRK;
+	else if (type == RCRTCL)
+		subtype = CATTRK;
+	else if (type == RDOCAL)
+		subtype = TRAFIC;
+	else if (type == I_RDOCAL)
+		subtype = TRAFIC;
+
+	_type = SUBTYPE(type, _attr.value(subtype).toUInt());
+
+	if (type == DEPCNT)
+		_label = QString::fromLatin1(_attr.value(VALDCO));
+	else if (type == LNDELV)
+		_label = QString::fromLatin1(_attr.value(ELEVAT));
+	else if (type == RECTRC)
+		_label = QString::fromLatin1(_attr.value(ORIENT));
+	else
+		_label = QString::fromLatin1(_attr.value(OBJNAM));
 }
 
 RectC MapData::Line::bounds() const
@@ -325,10 +542,10 @@ RectC MapData::Line::bounds() const
 }
 
 QVector<MapData::Sounding> MapData::soundings(const ISO8211::Record &r,
-  uint COMF, uint SOMF)
+  uint comf, uint somf)
 {
 	QVector<Sounding> s;
-	const ISO8211::Field *f = ISO8211::field(r, "SG3D");
+	const ISO8211::Field *f = r.field(SG3D);
 	if (!f)
 		return QVector<Sounding>();
 
@@ -337,24 +554,24 @@ QVector<MapData::Sounding> MapData::soundings(const ISO8211::Record &r,
 		int y = f->data().at(i).at(0).toInt();
 		int x = f->data().at(i).at(1).toInt();
 		int z = f->data().at(i).at(2).toInt();
-		s.append(Sounding(coordinates(x, y, COMF), z / (double)SOMF));
+		s.append(Sounding(coordinates(x, y, comf), z / (double)somf));
 	}
 
 	return s;
 }
 
 QVector<MapData::Sounding> MapData::soundingGeometry(const ISO8211::Record &r,
-  const RecordMap &vi, const RecordMap &vc, uint COMF, uint SOMF)
+  const RecordMap &vi, const RecordMap &vc, uint comf, uint somf)
 {
 	quint8 type;
 	quint32 id;
 	RecordMapIterator it;
 
-	const ISO8211::Field *FSPT = ISO8211::field(r, "FSPT");
-	if (!FSPT || FSPT->data().at(0).size() != 4)
+	const ISO8211::Field *fspt = r.field(FSPT);
+	if (!fspt || fspt->data().at(0).size() != 4)
 		return QVector<Sounding>();
 
-	if (!parseNAME(FSPT, &type, &id))
+	if (!parseNAME(fspt, &type, &id))
 		return QVector<Sounding>();
 
 	if (type == RCNM_VI) {
@@ -368,21 +585,21 @@ QVector<MapData::Sounding> MapData::soundingGeometry(const ISO8211::Record &r,
 	} else
 		return QVector<Sounding>();
 
-	return soundings(it.value(), COMF, SOMF);
+	return soundings(it.value(), comf, somf);
 }
 
 Coordinates MapData::pointGeometry(const ISO8211::Record &r,
-  const RecordMap &vi, const RecordMap &vc, uint COMF)
+  const RecordMap &vi, const RecordMap &vc, uint comf)
 {
 	quint8 type;
 	quint32 id;
 	RecordMapIterator it;
 
-	const ISO8211::Field *FSPT = ISO8211::field(r, "FSPT");
-	if (!FSPT || FSPT->data().at(0).size() != 4)
+	const ISO8211::Field *fspt = r.field(FSPT);
+	if (!fspt || fspt->data().at(0).size() != 4)
 		return Coordinates();
 
-	if (!parseNAME(FSPT, &type, &id))
+	if (!parseNAME(fspt, &type, &id))
 		return Coordinates();
 
 	if (type == RCNM_VI) {
@@ -396,55 +613,55 @@ Coordinates MapData::pointGeometry(const ISO8211::Record &r,
 	} else
 		return Coordinates();
 
-	return point(it.value(), COMF);
+	return point(it.value(), comf);
 }
 
 QVector<Coordinates> MapData::lineGeometry(const ISO8211::Record &r,
-  const RecordMap &vc, const RecordMap &ve, uint COMF)
+  const RecordMap &vc, const RecordMap &ve, uint comf)
 {
 	QVector<Coordinates> path;
 	Coordinates c[2];
-	uint ORNT;
+	uint ornt;
 	quint8 type;
 	quint32 id;
 
-	const ISO8211::Field *FSPT = ISO8211::field(r, "FSPT");
-	if (!FSPT || FSPT->data().at(0).size() != 4)
+	const ISO8211::Field *fspt = r.field(FSPT);
+	if (!fspt || fspt->data().at(0).size() != 4)
 		return QVector<Coordinates>();
 
-	for (int i = 0; i < FSPT->data().size(); i++) {
-		if (!parseNAME(FSPT, &type, &id, i) || type != RCNM_VE)
+	for (int i = 0; i < fspt->data().size(); i++) {
+		if (!parseNAME(fspt, &type, &id, i) || type != RCNM_VE)
 			return QVector<Coordinates>();
-		ORNT = FSPT->data().at(i).at(1).toUInt();
+		ornt = fspt->data().at(i).at(1).toUInt();
 
 		RecordMapIterator it = ve.find(id);
 		if (it == ve.constEnd())
 			return QVector<Coordinates>();
-		const ISO8211::Record &FRID = it.value();
-		const ISO8211::Field *VRPT = ISO8211::field(FRID, "VRPT");
-		if (!VRPT || VRPT->data().size() != 2)
+		const ISO8211::Record &frid = it.value();
+		const ISO8211::Field *vrpt = frid.field(VRPT);
+		if (!vrpt || vrpt->data().size() != 2)
 			return QVector<Coordinates>();
 
 		for (int j = 0; j < 2; j++) {
-			if (!parseNAME(VRPT, &type, &id, j) || type != RCNM_VC)
+			if (!parseNAME(vrpt, &type, &id, j) || type != RCNM_VC)
 				return QVector<Coordinates>();
 
 			RecordMapIterator jt = vc.find(id);
 			if (jt == vc.constEnd())
 				return QVector<Coordinates>();
-			c[j] = point(jt.value(), COMF);
+			c[j] = point(jt.value(), comf);
 			if (c[j].isNull())
 				return QVector<Coordinates>();
 		}
 
-		const ISO8211::Field *vertexes = SGXD(FRID);
-		if (ORNT == 2) {
+		const ISO8211::Field *vertexes = SGXD(frid);
+		if (ornt == 2) {
 			path.append(c[1]);
 			if (vertexes) {
 				for (int j = vertexes->data().size() - 1; j >= 0; j--) {
 					const QVector<QVariant> &cv = vertexes->data().at(j);
 					path.append(coordinates(cv.at(1).toInt(), cv.at(0).toInt(),
-					  COMF));
+					  comf));
 				}
 			}
 			path.append(c[0]);
@@ -454,7 +671,7 @@ QVector<Coordinates> MapData::lineGeometry(const ISO8211::Record &r,
 				for (int j = 0; j < vertexes->data().size(); j++) {
 					const QVector<QVariant> &cv = vertexes->data().at(j);
 					path.append(coordinates(cv.at(1).toInt(), cv.at(0).toInt(),
-					  COMF));
+					  comf));
 				}
 			}
 			path.append(c[1]);
@@ -465,26 +682,26 @@ QVector<Coordinates> MapData::lineGeometry(const ISO8211::Record &r,
 }
 
 Polygon MapData::polyGeometry(const ISO8211::Record &r, const RecordMap &vc,
-  const RecordMap &ve, uint COMF)
+  const RecordMap &ve, uint comf)
 {
 	Polygon path;
 	QVector<Coordinates> v;
 	Coordinates c[2];
-	uint ORNT, USAG;
+	uint ornt, usag;
 	quint8 type;
 	quint32 id;
 
-	const ISO8211::Field *FSPT = ISO8211::field(r, "FSPT");
-	if (!FSPT || FSPT->data().at(0).size() != 4)
+	const ISO8211::Field *fspt = r.field(FSPT);
+	if (!fspt || fspt->data().at(0).size() != 4)
 		return Polygon();
 
-	for (int i = 0; i < FSPT->data().size(); i++) {
-		if (!parseNAME(FSPT, &type, &id, i) || type != RCNM_VE)
+	for (int i = 0; i < fspt->data().size(); i++) {
+		if (!parseNAME(fspt, &type, &id, i) || type != RCNM_VE)
 			return Polygon();
-		ORNT = FSPT->data().at(i).at(1).toUInt();
-		USAG = FSPT->data().at(i).at(2).toUInt();
+		ornt = fspt->data().at(i).at(1).toUInt();
+		usag = fspt->data().at(i).at(2).toUInt();
 
-		if (USAG == 2 && path.isEmpty()) {
+		if (usag == 2 && path.isEmpty()) {
 			path.append(v);
 			v.clear();
 		}
@@ -492,55 +709,55 @@ Polygon MapData::polyGeometry(const ISO8211::Record &r, const RecordMap &vc,
 		RecordMapIterator it = ve.find(id);
 		if (it == ve.constEnd())
 			return Polygon();
-		const ISO8211::Record &FRID = it.value();
-		const ISO8211::Field *VRPT = ISO8211::field(FRID, "VRPT");
-		if (!VRPT || VRPT->data().size() != 2)
+		const ISO8211::Record &frid = it.value();
+		const ISO8211::Field *vrpt = frid.field(VRPT);
+		if (!vrpt || vrpt->data().size() != 2)
 			return Polygon();
 
 		for (int j = 0; j < 2; j++) {
-			if (!parseNAME(VRPT, &type, &id, j) || type != RCNM_VC)
+			if (!parseNAME(vrpt, &type, &id, j) || type != RCNM_VC)
 				return Polygon();
 
 			RecordMapIterator jt = vc.find(id);
 			if (jt == vc.constEnd())
 				return Polygon();
-			c[j] = point(jt.value(), COMF);
+			c[j] = point(jt.value(), comf);
 			if (c[j].isNull())
 				return Polygon();
 		}
 
-		const ISO8211::Field *vertexes = SGXD(FRID);
-		if (ORNT == 2) {
+		const ISO8211::Field *vertexes = SGXD(frid);
+		if (ornt == 2) {
 			v.append(c[1]);
-			if (USAG == 3)
+			if (usag == 3)
 				v.append(Coordinates());
 			if (vertexes) {
 				for (int j = vertexes->data().size() - 1; j >= 0; j--) {
 					const QVector<QVariant> &cv = vertexes->data().at(j);
 					v.append(coordinates(cv.at(1).toInt(), cv.at(0).toInt(),
-					  COMF));
+					  comf));
 				}
 			}
-			if (USAG == 3)
+			if (usag == 3)
 				v.append(Coordinates());
 			v.append(c[0]);
 		} else {
 			v.append(c[0]);
-			if (USAG == 3)
+			if (usag == 3)
 				v.append(Coordinates());
 			if (vertexes) {
 				for (int j = 0; j < vertexes->data().size(); j++) {
 					const QVector<QVariant> &cv = vertexes->data().at(j);
 					v.append(coordinates(cv.at(1).toInt(), cv.at(0).toInt(),
-					  COMF));
+					  comf));
 				}
 			}
-			if (USAG == 3)
+			if (usag == 3)
 				v.append(Coordinates());
 			v.append(c[1]);
 		}
 
-		if (USAG == 2 && v.first() == v.last()) {
+		if (usag == 2 && v.first() == v.last()) {
 			path.append(v);
 			v.clear();
 		}
@@ -552,207 +769,96 @@ Polygon MapData::polyGeometry(const ISO8211::Record &r, const RecordMap &vc,
 	return path;
 }
 
-MapData::Attr MapData::pointAttr(const ISO8211::Record &r, uint OBJL)
+MapData::Attributes MapData::attributes(const ISO8211::Record &r)
 {
-	QString label;
-	QVector<QByteArray> params(2);
-	uint subtype = 0;
+	Attributes attr;
 
-	const ISO8211::Field *ATTF = ISO8211::field(r, "ATTF");
-	if (!(ATTF && ATTF->data().at(0).size() == 2))
-		return Attr();
+	const ISO8211::Field *attf = r.field(ATTF);
+	if (!(attf && attf->data().at(0).size() == 2))
+		return attr;
 
-	for (int i = 0; i < ATTF->data().size(); i++) {
-		const QVector<QVariant> &av = ATTF->data().at(i);
-		uint key = av.at(0).toUInt();
-
-		if (key == OBJNAM)
-			label = QString::fromLatin1(av.at(1).toByteArray());
-
-		if ((OBJL == HRBFAC && key == CATHAF)
-		  || (OBJL == I_HRBFAC && key == I_CATHAF)
-		  || (OBJL == LNDMRK && key == CATLMK)
-		  || (OBJL == WRECKS && key == CATWRK)
-		  || (OBJL == MORFAC && key == CATMOR)
-		  || (OBJL == UWTROC && key == WATLEV)
-		  || (OBJL == BUAARE && key == CATBUA)
-		  || (OBJL == SMCFAC && key == CATSCF)
-		  || (OBJL == BUISGL && key == FUNCTN)
-		  || (OBJL == WATTUR && key == CATWAT)
-		  || (OBJL == SISTAT && key == CATSIT)
-		  || (OBJL == I_SISTAT && key == I_CATSIT)
-		  || (OBJL == RDOCAL && key == TRAFIC)
-		  || (OBJL == I_RDOCAL && key == TRAFIC)
-		  || (OBJL == SILTNK && key == CATSIL)
-		  || (OBJL == WEDKLP && key == CATWED))
-			subtype = av.at(1).toByteArray().toUInt();
-		else if (OBJL == I_DISMAR && key == CATDIS)
-			subtype |= av.at(1).toByteArray().toUInt();
-		else if (OBJL == I_DISMAR && key == I_HUNITS)
-			subtype |= av.at(1).toByteArray().toUInt() << 8;
-
-		if ((OBJL == I_DISMAR && key == I_WTWDIS)
-		  || (OBJL == RDOCAL && key == ORIENT)
-		  || (OBJL == I_RDOCAL && key == ORIENT)
-		  || (OBJL == CURENT && key == ORIENT)
-		  || (OBJL == LNDELV && key == ELEVAT))
-			params[0] = av.at(1).toByteArray();
-		if ((OBJL == I_RDOCAL && key == COMCHA)
-		  || (OBJL == RDOCAL && key == COMCHA)
-		  || (OBJL == CURENT && key == CURVEL))
-			params[1] = av.at(1).toByteArray();
+	for (int i = 0; i < attf->data().size(); i++) {
+		const QVector<QVariant> &av = attf->data().at(i);
+		attr.insert(av.at(0).toUInt(), av.at(1).toByteArray());
 	}
 
-	return Attr(subtype, label, params);
-}
-
-MapData::Attr MapData::lineAttr(const ISO8211::Record &r, uint OBJL)
-{
-	QString label;
-	QVector<QByteArray> params(1);
-	uint subtype = 0;
-
-	const ISO8211::Field *ATTF = ISO8211::field(r, "ATTF");
-	if (!(ATTF && ATTF->data().at(0).size() == 2))
-		return Attr();
-
-	for (int i = 0; i < ATTF->data().size(); i++) {
-		const QVector<QVariant> &av = ATTF->data().at(i);
-		uint key = av.at(0).toUInt();
-
-		if (key == OBJNAM)
-			label = QString::fromLatin1(av.at(1).toByteArray());
-
-		if ((OBJL == RECTRC || OBJL == RCRTCL) && key == CATTRK)
-			subtype = av.at(1).toByteArray().toUInt();
-
-		if ((OBJL == DEPCNT && key == VALDCO)
-		  || (OBJL == LNDELV && key == ELEVAT))
-			params[0] = av.at(1).toByteArray();
-	}
-
-	return Attr(subtype, label, params);
-}
-
-MapData::Attr MapData::polyAttr(const ISO8211::Record &r, uint OBJL)
-{
-	QString label;
-	QVector<QByteArray> params(1);
-	uint subtype = 0;
-
-	const ISO8211::Field *ATTF = ISO8211::field(r, "ATTF");
-	if (!(ATTF && ATTF->data().at(0).size() == 2))
-		return Attr();
-
-	for (int i = 0; i < ATTF->data().size(); i++) {
-		const QVector<QVariant> &av = ATTF->data().at(i);
-		uint key = av.at(0).toUInt();
-
-		if (key == OBJNAM)
-			label = QString::fromLatin1(av.at(1).toByteArray());
-
-		if ((OBJL == RESARE && key == CATREA)
-		  || (OBJL == I_RESARE && key == CATREA)
-		  || (OBJL == ACHARE && key == CATACH)
-		  || (OBJL == I_ACHARE && key == I_CATACH)
-		  || (OBJL == HRBFAC && key == CATHAF)
-		  || (OBJL == MARKUL && key == CATMFA)
-		  || (OBJL == I_BERTHS && key == I_CATBRT))
-			subtype = av.at(1).toByteArray().toUInt();
-		else if ((OBJL == RESARE && key == RESTRN)
-		  || (OBJL == I_RESARE && key == I_RESTRN)) {
-			if (av.at(1).toByteArray().toUInt() == 1)
-				subtype = 2;
-			if (av.at(1).toByteArray().toUInt() == 7)
-				subtype = 17;
-		}
-
-		if ((OBJL == TSSLPT && key == ORIENT)
-		  || (OBJL == DEPARE && key == DRVAL1))
-			params[0] = av.at(1).toByteArray();
-		if ((OBJL == BRIDGE && key == VERCLR)
-		  || (OBJL == I_BRIDGE && key == VERCLR))
-			params[0] = av.at(1).toByteArray();
-	}
-
-	return Attr(subtype, label, params);
+	return attr;
 }
 
 MapData::Point *MapData::pointObject(const Sounding &s)
 {
-	return new Point(TYPE(SOUNDG), s.c, QString::number(s.depth),
-	  QVector<QByteArray>());
+	return new Point(SOUNDG, s.c, QString::number(s.depth));
 }
 
 MapData::Point *MapData::pointObject(const ISO8211::Record &r,
-  const RecordMap &vi, const RecordMap &vc, uint COMF, uint OBJL)
+  const RecordMap &vi, const RecordMap &vc, uint comf, uint objl, uint huni)
 {
-	Coordinates c(pointGeometry(r, vi, vc, COMF));
-	Attr attr(pointAttr(r, OBJL));
-
-	return (c.isNull() ? 0 : new Point(SUBTYPE(OBJL,attr.subtype()), c,
-	  attr.label(), attr.params()));
+	Coordinates c(pointGeometry(r, vi, vc, comf));
+	return (c.isNull() ? 0 : new Point(objl, c, attributes(r), huni));
 }
 
 MapData::Line *MapData::lineObject(const ISO8211::Record &r,
-  const RecordMap &vc, const RecordMap &ve, uint COMF, uint OBJL)
+  const RecordMap &vc, const RecordMap &ve, uint comf, uint objl)
 {
-	QVector<Coordinates> path(lineGeometry(r, vc, ve, COMF));
-	Attr attr(lineAttr(r, OBJL));
-
-	return (path.isEmpty() ? 0 : new Line(SUBTYPE(OBJL, attr.subtype()), path,
-	  attr.label(), attr.params()));
+	QVector<Coordinates> path(lineGeometry(r, vc, ve, comf));
+	return (path.isEmpty() ? 0 : new Line(objl, path, attributes(r)));
 }
 
 MapData::Poly *MapData::polyObject(const ISO8211::Record &r,
-  const RecordMap &vc, const RecordMap &ve, uint COMF, uint OBJL, uint HUNI)
+  const RecordMap &vc, const RecordMap &ve, uint comf, uint objl, uint huni)
 {
-	Polygon path(polyGeometry(r, vc, ve, COMF));
-	Attr attr(polyAttr(r, OBJL));
-
-	return (path.isEmpty() ? 0 : new Poly(SUBTYPE(OBJL, attr.subtype()), path,
-	  attr.label(), attr.params(), HUNI));
+	Polygon path(polyGeometry(r, vc, ve, comf));
+	return (path.isEmpty() ? 0 : new Poly(objl, path, attributes(r), huni));
 }
 
 bool MapData::processRecord(const ISO8211::Record &record,
   QVector<ISO8211::Record> &fe, RecordMap &vi, RecordMap &vc, RecordMap &ve,
-  RecordMap &vf, uint &COMF, uint &SOMF, uint &HUNI)
+  uint &comf, uint &somf, uint &huni)
 {
 	if (record.size() < 2)
 		return false;
 
 	const ISO8211::Field &f = record.at(1);
-	const QByteArray &ba = f.tag();
+	quint32 tag = f.tag();
 
-	if (ba == "VRID") {
+	if (tag == VRID) {
+		bool nmok, idok;
+
 		if (f.data().at(0).size() < 2)
 			return false;
-		int RCNM = f.data().at(0).at(0).toInt();
-		uint RCID = f.data().at(0).at(1).toUInt();
+		int rcnm = f.data().at(0).at(0).toInt(&nmok);
+		uint rcid = f.data().at(0).at(1).toUInt(&idok);
+		if (!(nmok && idok))
+			return false;
 
-		switch (RCNM) {
+		switch (rcnm) {
 			case RCNM_VI:
-				vi.insert(RCID, record);
+				vi.insert(rcid, record);
 				break;
 			case RCNM_VC:
-				vc.insert(RCID, record);
+				vc.insert(rcid, record);
 				break;
 			case RCNM_VE:
-				ve.insert(RCID, record);
+				ve.insert(rcid, record);
 				break;
 			case RCNM_VF:
-				vf.insert(RCID, record);
-				break;
+				qWarning("Full topology/faces not supported");
+				return false;
 			default:
 				return false;
 		}
-	} else if (ba == "FRID") {
+	} else if (tag == FRID) {
 		fe.append(record);
-	} else if (ba == "DSPM") {
-		if (!(f.subfield("COMF", &COMF) && f.subfield("SOMF", &SOMF)))
+	} else if (tag == DSPM) {
+		bool cok, sok, hok;
+
+		if (f.data().at(0).size() < 12)
 			return false;
-		if (!f.subfield("HUNI", &HUNI))
-			return false;
+		comf = f.data().at(0).at(10).toUInt(&cok);
+		somf = f.data().at(0).at(11).toUInt(&sok);
+		huni = f.data().at(0).at(7).toUInt(&hok);
+
+		return (cok && sok && hok);
 	}
 
 	return true;
@@ -760,11 +866,11 @@ bool MapData::processRecord(const ISO8211::Record &record,
 
 MapData::MapData(const QString &path)
 {
-	RecordMap vi, vc, ve, vf;
+	RecordMap vi, vc, ve;
 	QVector<ISO8211::Record> fe;
 	ISO8211 ddf(path);
 	ISO8211::Record record;
-	uint PRIM, OBJL, COMF = 1, SOMF = 1, HUNI = 1;
+	uint prim, objl, comf = 1, somf = 1, huni = 1;
 	Poly *poly;
 	Line *line;
 	Point *point;
@@ -773,49 +879,55 @@ MapData::MapData(const QString &path)
 
 	if (!ddf.readDDR())
 		return;
-	while (ddf.readRecord(record))
-		if (!processRecord(record, fe, vi, vc, ve, vf, COMF, SOMF, HUNI))
-			qWarning("Invalid S-57 record");
+	while (!ddf.atEnd()) {
+		if (!ddf.readRecord(record)) {
+			qWarning("%s: %s", qUtf8Printable(path),
+			  qUtf8Printable(ddf.errorString()));
+			return;
+		}
+		if (!processRecord(record, fe, vi, vc, ve, comf, somf, huni))
+			qWarning("%s: Invalid S-57 record", qUtf8Printable(path));
+	}
 
 	for (int i = 0; i < fe.size(); i++) {
 		const ISO8211::Record &r = fe.at(i);
-		const ISO8211::Field &f = r.at(1);
+		const ISO8211::Field &frid = r.at(1);
 
-		if (f.data().at(0).size() < 5)
+		if (frid.data().at(0).size() < 5)
 			continue;
-		PRIM = f.data().at(0).at(2).toUInt();
-		OBJL = f.data().at(0).at(4).toUInt();
+		prim = frid.data().at(0).at(2).toUInt();
+		objl = frid.data().at(0).at(4).toUInt();
 
-		switch (PRIM) {
+		switch (prim) {
 			case PRIM_P:
-				if (OBJL == SOUNDG) {
-					QVector<Sounding> s(soundingGeometry(r, vi, vc, COMF, SOMF));
+				if (objl == SOUNDG) {
+					QVector<Sounding> s(soundingGeometry(r, vi, vc, comf, somf));
 					for (int i = 0; i < s.size(); i++) {
 						point = pointObject(s.at(i));
 						pointBounds(point->pos(), min, max);
 						_points.Insert(min, max, point);
 					}
 				} else {
-					if ((point = pointObject(r, vi, vc, COMF, OBJL))) {
+					if ((point = pointObject(r, vi, vc, comf, objl, huni))) {
 						pointBounds(point->pos(), min, max);
 						_points.Insert(min, max, point);
 					} else
-						warning(f, PRIM);
+						warning(frid, prim);
 				}
 				break;
 			case PRIM_L:
-				if ((line = lineObject(r, vc, ve, COMF, OBJL))) {
+				if ((line = lineObject(r, vc, ve, comf, objl))) {
 					rectcBounds(line->bounds(), min, max);
 					_lines.Insert(min, max, line);
 				} else
-					warning(f, PRIM);
+					warning(frid, prim);
 				break;
 			case PRIM_A:
-				if ((poly = polyObject(r, vc, ve, COMF, OBJL, HUNI))) {
+				if ((poly = polyObject(r, vc, ve, comf, objl, huni))) {
 					rectcBounds(poly->bounds(), min, max);
 					_areas.Insert(min, max, poly);
 				} else
-					warning(f, PRIM);
+					warning(frid, prim);
 				break;
 		}
 	}
@@ -836,26 +948,22 @@ MapData::~MapData()
 		delete _points.GetAt(pit);
 }
 
-void MapData::points(const RectC &rect, QList<Point> *points) const
+void MapData::points(const RectC &rect, QList<Point> *points)
 {
 	double min[2], max[2];
 
 	rectcBounds(rect, min, max);
 	_points.Search(min, max, pointCb, points);
+	_areas.Search(min, max, polygonPointCb, points);
+	_lines.Search(min, max, linePointCb, points);
 }
 
-void MapData::lines(const RectC &rect, QList<Line> *lines) const
+void MapData::polys(const RectC &rect, QList<Poly> *polygons,
+  QList<Line> *lines)
 {
 	double min[2], max[2];
 
 	rectcBounds(rect, min, max);
 	_lines.Search(min, max, lineCb, lines);
-}
-
-void MapData::polygons(const RectC &rect, QList<Poly> *polygons) const
-{
-	double min[2], max[2];
-
-	rectcBounds(rect, min, max);
 	_areas.Search(min, max, polygonCb, polygons);
 }

@@ -6,31 +6,23 @@ bool AtlasData::pointCb(MapEntry *map, void *context)
 {
 	PointCTX *ctx = (PointCTX*)context;
 
-start:
+	map->lock.lock();
+
 	ctx->cacheLock.lock();
-
 	MapData *cached = ctx->cache.object(map->path);
-
 	if (!cached) {
 		ctx->cacheLock.unlock();
 
-		if (map->lock.tryLock()) {
-			MapData *data = new MapData(map->path);
-			data->points(ctx->rect, ctx->points);
+		MapData *data = new MapData(map->path);
+		data->points(ctx->rect, ctx->points);
 
-			ctx->cacheLock.lock();
-			ctx->cache.insert(map->path, data);
-
-			map->lock.unlock();
-		} else {
-			map->lock.lock();
-			map->lock.unlock();
-			goto start;
-		}
+		ctx->cacheLock.lock();
+		ctx->cache.insert(map->path, data);
 	} else
 		cached->points(ctx->rect, ctx->points);
 
 	ctx->cacheLock.unlock();
+	map->lock.unlock();
 
 	return true;
 }
@@ -39,34 +31,23 @@ bool AtlasData::polyCb(MapEntry *map, void *context)
 {
 	PolyCTX *ctx = (PolyCTX*)context;
 
-start:
+	map->lock.lock();
+
 	ctx->cacheLock.lock();
-
 	MapData *cached = ctx->cache.object(map->path);
-
 	if (!cached) {
 		ctx->cacheLock.unlock();
 
-		if (map->lock.tryLock()) {
-			MapData *data = new MapData(map->path);
-			data->polygons(ctx->rect, ctx->polygons);
-			data->lines(ctx->rect, ctx->lines);
+		MapData *data = new MapData(map->path);
+		data->polys(ctx->rect, ctx->polygons, ctx->lines);
 
-			ctx->cacheLock.lock();
-			ctx->cache.insert(map->path, data);
-
-			map->lock.unlock();
-		} else {
-			map->lock.lock();
-			map->lock.unlock();
-			goto start;
-		}
-	} else {
-		cached->polygons(ctx->rect, ctx->polygons);
-		cached->lines(ctx->rect, ctx->lines);
-	}
+		ctx->cacheLock.lock();
+		ctx->cache.insert(map->path, data);
+	} else
+		cached->polys(ctx->rect, ctx->polygons, ctx->lines);
 
 	ctx->cacheLock.unlock();
+	map->lock.unlock();
 
 	return true;
 }

@@ -43,44 +43,44 @@ private:
 		const MapData::Path *path;
 	};
 
-	struct PointText {
-		PointText(const MapData::Point *p, const QByteArray *lbl,
+	struct Label {
+		Label(const MapData::Point *p, const QList<const QByteArray *> lbl,
 		  const Style::Symbol *si, const Style::TextRender *ti)
-		  : p(p), lbl(lbl), ti(ti), si(si)
+		  : point(p), ti(ti), si(si), lbl(lbl)
 		{
 			Q_ASSERT(si || ti);
 		}
 
-		bool operator<(const PointText &other) const
+		bool operator<(const Label &other) const
 		{
 			if (priority() == other.priority())
-				return p->id < other.p->id;
+				return point->id < other.point->id;
 			else
 				return (priority() > other.priority());
 		}
 		int priority() const {return si ? si->priority() : ti->priority();}
 
-		const MapData::Point *p;
-		const QByteArray *lbl;
+		const MapData::Point *point;
 		const Style::TextRender *ti;
 		const Style::Symbol *si;
+		QList<const QByteArray *> lbl;
 	};
 
-	struct PathText {
-		PathText(const PainterPath *p, const QByteArray *lbl,
+	struct LineLabel {
+		LineLabel(const PainterPath *p, const QByteArray *lbl,
 		  const Style::Symbol *si, const Style::TextRender *ti)
-		  : p(p), lbl(lbl), ti(ti), si(si)
+		  : path(p), lbl(lbl), ti(ti), si(si)
 		{
 			Q_ASSERT(si || ti);
 		}
 
-		bool operator<(const PathText &other) const
+		bool operator<(const LineLabel &other) const
 		{
 			return (priority() > other.priority());
 		}
 		int priority() const {return si ? si->priority() : ti->priority();}
 
-		const PainterPath *p;
+		const PainterPath *path;
 		const QByteArray *lbl;
 		const Style::TextRender *ti;
 		const Style::Symbol *si;
@@ -120,7 +120,7 @@ private:
 		int layer() const
 		{
 			if (_path)
-				return _path->path->layer;
+				return _path->path->point.layer;
 			else if (_point)
 				return _point->layer;
 			else
@@ -170,11 +170,28 @@ private:
 	class PointItem : public TextPointItem
 	{
 	public:
-		PointItem(const QPoint &point, const QByteArray *label,
+		PointItem(const QPoint &point, const QList<const QByteArray *> &lbl,
 		  const QFont *font, const QImage *img, const QColor *color,
-		  const QColor *haloColor) : TextPointItem(point,
-		  label ? new QString(*label) : 0, font, img, color, haloColor, 0) {}
+		  const QColor *haloColor) : TextPointItem(point, label(lbl),
+		  font, img, color, haloColor, 0) {}
+		PointItem(const QPoint &point, const QByteArray *label,
+		  const QFont *font, const QColor *color, const QColor *bgColor)
+		  : TextPointItem(point, label ? new QString(*label) : 0, font, 0,
+		  color, 0, bgColor) {}
 		~PointItem() {delete _text;}
+
+	private:
+		static QString *label(const QList<const QByteArray*> &ll)
+		{
+			if (ll.isEmpty())
+				return 0;
+
+			QString *ret = new QString(*ll.first());
+			for (int i = 1; i < ll.size(); i++)
+				ret->append("\n" + *ll.at(i));
+
+			return ret;
+		}
 	};
 
 	class PathItem : public TextPathItem
@@ -204,9 +221,7 @@ private:
 	  {return _transform.proj2img(_proj.ll2xy(c));}
 	Coordinates xy2ll(const QPointF &p) const
 	  {return _proj.xy2ll(_transform.img2proj(p));}
-	void processPointLabels(const QList<MapData::Point> &points,
-	  QList<TextItem*> &textItems) const;
-	void processAreaLabels(const QVector<PainterPath> &paths,
+	void processLabels(const QList<MapData::Point> &points,
 	  QList<TextItem*> &textItems) const;
 	void processLineLabels(const QVector<PainterPath> &paths,
 	  QList<TextItem*> &textItems) const;

@@ -13,6 +13,7 @@ using namespace Garmin;
 using namespace IMG;
 
 #define MASK(bits) ((1U << (bits)) - 1U)
+#define COLOR(color) static_cast<Light::Color>(color)
 
 static quint64 pointId(const QPoint &pos, quint32 type, const QString &label)
 {
@@ -107,7 +108,8 @@ bool RGNFile::readObstructionInfo(Handle &hdl, quint8 flags, quint32 size,
 	return true;
 }
 
-bool RGNFile::readBuoyInfo(Handle &hdl, quint8 flags, MapData::Point *point) const
+bool RGNFile::readBuoyInfo(Handle &hdl, quint8 flags, quint32 size,
+  MapData::Point *point) const
 {
 	quint16 val;
 	quint8 lc;
@@ -115,15 +117,115 @@ bool RGNFile::readBuoyInfo(Handle &hdl, quint8 flags, MapData::Point *point) con
 	if ((flags & 0xe0) != 0xe0)
 		return true;
 
-	if (!readUInt16(hdl, val))
+	if (!(size >= 2 && readUInt16(hdl, val)))
 		return false;
+
+	point->flags |= (val & 0x3f)<<24;
 
 	lc = (val >> 10) & 0x0f;
 	if (!lc)
 		lc = (val >> 6) & 7;
 
 	if (lc)
-		point->flags |= MapData::Point::Light;
+		point->lights.append(Light(COLOR(lc), 0));
+
+	return true;
+}
+
+bool RGNFile::readLightInfo(Handle &hdl, quint8 flags, quint32 size,
+  MapData::Point *point) const
+{
+	quint32 flags1, flags2, unused;
+
+	if (!(size >= 3 && readUInt16(hdl, flags1) && readUInt8(hdl, flags2)))
+		return false;
+	size -= 3;
+	if (flags2 >> 6) {
+		if (!(size >= (flags2 >> 6) && readVUInt32(hdl, (flags2 >> 6), unused)))
+			return false;
+		size -= (flags2 >> 6);
+	}
+	if (flags2 >> 2 & 3) {
+		if (!(size >= (flags2 >> 2 & 3)
+		  && readVUInt32(hdl, (flags2 >> 2 & 3), unused)))
+			return false;
+		size -= (flags2 >> 2 & 3);
+	}
+	if (flags1 & 0xc0) {
+		if (flags1 & 0x80) {
+			if (!(size >= 1 && readUInt8(hdl, unused)))
+				return false;
+			unused |= ((flags1 & 0x40) << 2);
+			size--;
+		} else {
+			if (!(size >= 2 && readUInt16(hdl, unused)))
+				return false;
+			size -= 2;
+		}
+	}
+	if (flags & 2) {
+		if (!(size >= 3 && readUInt24(hdl, unused)))
+			return false;
+		size -= 3;
+	}
+	if (flags & 4) {
+		if (!(size >= 3 && readUInt24(hdl, unused)))
+			return false;
+		size -= 3;
+	}
+	if (flags & 8) {
+		if (!(size >= 3 && readUInt24(hdl, unused)))
+			return false;
+		size -= 3;
+	}
+	if (flags1 & 0x200) {
+		if (!(size >= 2 && readUInt16(hdl, unused)))
+			return false;
+		size -= 2;
+	}
+	if (flags1 & 0x400) {
+		if (!(size >= 1 && readUInt8(hdl, unused)))
+			return false;
+		size--;
+	}
+	if (flags1 & 0x800) {
+		quint16 la;
+		quint8 cf, range = 0;
+		QVector<Light::Sector> sectors;
+
+		do {
+			if (!(size >= 2 && readUInt16(hdl, la)))
+				return false;
+			size -= 2;
+
+			cf = la >> 8;
+			Light::Color c = COLOR(cf >> 4 & 7);
+			if (c) {
+				if (!(size >= 1 && readUInt8(hdl, range)))
+					return false;
+				size--;
+			}
+			sectors.append(Light::Sector(c, la & 0xfff, range));
+		} while (!(cf >> 7));
+
+		point->lights.append(Light(sectors));
+	} else {
+		quint8 v1, v2, range;
+
+		if (!(size >= 1 && readUInt8(hdl, v1)))
+			return false;
+		size--;
+
+		range = v1 & 0x1f;
+		if ((v1 & 0x1f) == 0x1f) {
+			if (!(size >= 1 && readUInt8(hdl, v2)))
+				return false;
+			size--;
+			range += v2;
+		}
+
+		point->lights.append(Light(COLOR(v1 >> 5), range));
+	}
 
 	return true;
 }
@@ -142,12 +244,109 @@ bool RGNFile::readLabel(Handle &hdl, LBLFile *lbl, Handle &lblHdl,
 	return true;
 }
 
+bool RGNFile::readLineStyle(Handle &hdl, quint8 flags, quint32 size,
+  MapData::Poly *line) const
+{
+	line->flags |= (flags & 0xf)<<24;
+
+	if (size == 1) {
+		quint32 val;
+
+		if (!readUInt8(hdl, val))
+			return false;
+
+		if (val & 3)
+			line->flags |= MapData::Poly::Dashed;
+		if ((val >> 3) & 3)
+			line->flags |= MapData::Poly::Direction;
+		if ((val >> 3) & 2)
+			line->flags |= MapData::Poly::Invert;
+
+		return true;
+	} else {
+		if ((flags >> 4) & 3)
+			line->flags |= MapData::Poly::Dashed;
+		return (!size);
+	}
+}
+
+bool RGNFile::readRecommendedRoute(Handle &hdl, quint8 flags, quint32 size,
+  MapData::Poly *line) const
+{
+	quint32 f2;
+
+	if (!(size >= 1 && readUInt8(hdl, f2)))
+		return false;
+	size--;
+
+	if ((flags >> 5) == 7) {
+		quint32 f3;
+		if (!(size >= 1 && readUInt8(hdl, f3)))
+			return false;
+		size--;
+
+		if (f3 & 1) {
+			quint32 v1;
+			if (!(size >= 1 && readUInt8(hdl, v1)))
+				return false;
+			size--;
+			if (v1 & 1) {
+				quint32 v2;
+				if (!(size >= 1 && readUInt8(hdl, v2)))
+					return false;
+				size--;
+			}
+		}
+		if (f3 & 2) {
+			quint32 angle;
+			if (!(size >= 2 && readUInt16(hdl, angle)))
+				return false;
+			size -= 2;
+			line->label = Label(QString::number(angle / 10.0) + QChar(0x00B0));
+		}
+		if (f3 & 4) {
+			quint32 v;
+			if (!(size >= 1 && readUInt8(hdl, v)))
+				return false;
+			size--;
+
+			if ((v >> 4) & 3) {
+				line->flags |= MapData::Poly::Dashed;
+				line->label = Label();
+			}
+		}
+	} else {
+		if ((f2 & 0xe)) {
+			quint32 angle;
+			if (!(size >= 2 && readUInt16(hdl, angle)))
+				return false;
+			size -= 2;
+			line->label = Label(QString::number(angle / 10.0) + QChar(0x00B0));
+		} else if (f2 & 0x70) {
+			quint32 v1;
+			if (!(size >= 1 && readUInt8(hdl, v1)))
+				return false;
+			size--;
+			if (v1 & 1) {
+				quint32 v2;
+				if (!(size >= 1 && readUInt8(hdl, v2)))
+					return false;
+				size--;
+			}
+		}
+	}
+
+	return (size == 0);
+}
+
 bool RGNFile::readClassFields(Handle &hdl, SegmentType segmentType,
   void *object, LBLFile *lbl, Handle &lblHdl) const
 {
 	quint8 flags;
 	quint32 rs = 0;
 	MapData::Poly *poly = (segmentType == Polygon)
+	  ? (MapData::Poly *) object : 0;
+	MapData::Poly *line = (segmentType == Line)
 	  ? (MapData::Poly *) object : 0;
 	MapData::Point *point = (segmentType == Point)
 	  ? (MapData::Point *) object : 0;
@@ -175,21 +374,219 @@ bool RGNFile::readClassFields(Handle &hdl, SegmentType segmentType,
 
 	if (poly && Style::isRaster(poly->type))
 		readRasterInfo(hdl, lbl, rs, poly);
+
 	if (point && !Style::isMarinePoint(point->type))
 		readLabel(hdl, lbl, lblHdl, flags, rs, point);
-
 	if (point && Style::isDepthPoint(point->type))
 		readDepthInfo(hdl, flags, rs, point);
 	if (point && Style::isObstructionPoint(point->type))
 		readObstructionInfo(hdl, flags, rs, point);
 	if (point && Style::isBuoy(point->type))
-		readBuoyInfo(hdl, flags, point);
+		readBuoyInfo(hdl, flags, rs, point);
+	if (point && Style::isLight(point->type))
+		readLightInfo(hdl, flags, rs, point);
+	if (point && Style::isLabelPoint(point->type))
+		point->flags |= (flags & 0xf)<<20;
+
+	if (line && Style::isStyledLine(line->type))
+		readLineStyle(hdl, flags, rs, line);
+	if (line && Style::isRecommendedRoute(line->type))
+		readRecommendedRoute(hdl, flags, rs, line);
 
 	return seek(hdl, off + rs);
 }
 
-bool RGNFile::skipLclFields(Handle &hdl, const quint32 flags[3]) const
+bool RGNFile::readLclSectors(Handle &hdl, quint32 &size, quint32 flags,
+  Light &light) const
 {
+	quint32 unused, cnt = flags & 0x1f;
+	QVector<Light::Sector> sectors;
+
+	for (quint32 j = 0; j < cnt; j++) {
+		quint32 cf, range = 0;
+
+		if (!(size >= 1 && readUInt8(hdl, cf)))
+			return false;
+		size--;
+		if (cf >> 6) {
+			if (!(size >= (cf >> 6) && readVUInt32(hdl, cf >> 6, range)))
+				return false;
+			size -= (cf >> 6);
+		}
+
+		if (cnt > 1) {
+			quint32 angle;
+
+			if (!(size >= 2 && readUInt16(hdl, angle)))
+				return false;
+			size -= 2;
+			if ((flags >> 0x13) & 1) {
+				quint32 sflags;
+
+				if (!(size >= 1 && readUInt8(hdl, sflags)))
+					return false;
+				size--;
+				if (0x3f < sflags) {
+					if (sflags & 0x80) {
+						if (!(size >= 1 && readUInt8(hdl, unused)))
+							return false;
+						size--;
+						unused |= (sflags & 0x40) << 2;
+					} else {
+						if (!(size >= 2 && readUInt16(hdl, unused)))
+							return false;
+						size -= 2;
+					}
+				}
+			}
+
+			sectors.append(Light::Sector(COLOR(cf & 0x7), angle, range));
+		} else {
+			light = Light(COLOR(cf & 0x7), range);
+			return true;
+		}
+	}
+
+	light = Light(sectors);
+
+	return true;
+}
+
+bool RGNFile::readLclLights(Handle &hdl, quint32 &size, quint32 lights,
+  MapData::Point *point) const
+{
+	quint32 unused;
+
+	for (quint32 i = 0; i < lights; i++) {
+		quint32 fs, vs, flags;
+		Light light;
+
+		if (!(readVUInt32(hdl, fs, &vs) && size >= vs))
+			return false;
+		size -= vs;
+		if (!(size >= 4 && readUInt32(hdl, flags)))
+			return false;
+		size -= 4;
+		if (flags >> 0x11 & 3) {
+			if (!(size >= (flags >> 0x11 & 3)
+			  && readVUInt32(hdl, flags >> 0x11 & 3, unused)))
+				return false;
+			size -= (flags >> 0x11 & 3);
+		}
+		if (flags & 0x3000) {
+			if (flags & 0x2000) {
+				if (!(size >= 1 && readUInt8(hdl, unused)))
+					return false;
+				size--;
+				unused |= (flags >> 4) & 0x100;
+			} else {
+				if (!(size >= 2 && readUInt16(hdl, unused)))
+					return false;
+				size -= 2;
+			}
+		}
+		if (flags & 0x100000) {
+			if (!(size >= 1 && readUInt8(hdl, unused)))
+				return false;
+			size--;
+			if (unused & 0x80) {
+				if (!(size >= 1 && readUInt8(hdl, unused)))
+					return false;
+				size--;
+			}
+		}
+
+		if (!readLclSectors(hdl, size, flags, light))
+			return false;
+
+		point->lights.append(light);
+	}
+
+	return true;
+}
+
+bool RGNFile::readLclNavaid(Handle &hdl, quint32 size,
+  MapData::Point *point) const
+{
+	quint32 unused, color, flags;
+
+	// Discard the class lights info if any (marine points may have both!)
+	point->lights.clear();
+	point->flags &= 0xffffff;
+
+	if (!(size >= 4 && readUInt32(hdl, flags)))
+		return false;
+	size -= 4;
+	if (flags & 1) {
+		if (!(size >= 1 && readUInt8(hdl, color)))
+			return false;
+		size--;
+		point->flags |= color<<24;
+	}
+	if (flags & 2) {
+		if (!(size >= 1 && readUInt8(hdl, unused)))
+			return false;
+		size--;
+	}
+	if (flags & 4) {
+		if (!(size >= 1 && readUInt8(hdl, unused)))
+			return false;
+		size--;
+	}
+	if (flags & 8) {
+		if (!(size >= 3 && readUInt24(hdl, unused)))
+			return false;
+		size -= 3;
+	}
+	if (flags & 0x10) {
+		if (!(size >= 3 && readUInt24(hdl, unused)))
+			return false;
+		size -= 3;
+	}
+	if (flags & 0x20) {
+		if (!(size >= 3 && readUInt24(hdl, unused)))
+			return false;
+		size -= 3;
+	}
+	if (flags & 0x200) {
+		quint8 b;
+		do {
+			if (!(size >= 1 && readUInt8(hdl, b)))
+				return false;
+			size--;
+		} while (b & 0x80);
+	}
+
+	if (!readLclLights(hdl, size, (flags >> 6) & 7, point))
+		return false;
+
+	return (size == 0);
+}
+
+bool RGNFile::readLclImg(Handle &hdl, quint32 size,
+  MapData::Point *point) const
+{
+	quint32 img;
+
+	if (size == 1) {
+		if (!readUInt8(hdl, img))
+			return false;
+	} else if (size == 2) {
+		if (!readUInt16(hdl, img))
+			return false;
+	} else
+		return false;
+
+	point->flags |= img<<24;
+
+	return true;
+}
+
+bool RGNFile::readLclFields(Handle &hdl, const quint32 flags[3],
+  SegmentType segmentType, void *object) const
+{
+	MapData::Point *point = (segmentType == Point)
+	  ? (MapData::Point *) object : 0;
 	quint32 bitfield = 0xFFFFFFFF;
 
 	if (flags[0] & 0x20000000)
@@ -201,13 +598,21 @@ bool RGNFile::skipLclFields(Handle &hdl, const quint32 flags[3]) const
 			if (bitfield & 1) {
 				quint32 m = flags[(j >> 4) + 1] >> ((j * 2) & 0x1e) & 3;
 
-				quint32 skip = 0;
+				quint32 size = 0;
 				if (m == 3) {
-					if (!readVUInt32(hdl, skip))
+					if (!readVUInt32(hdl, size))
 						return false;
 				} else
-					skip = m + 1;
-				if (!seek(hdl, pos(hdl) + skip))
+					size = m + 1;
+
+				quint32 off = pos(hdl);
+
+				if (i == 2 && point)
+					readLclNavaid(hdl, size, point);
+				else if (i == 3 && point)
+					readLclImg(hdl, size, point);
+
+				if (!seek(hdl, off + size))
 					return false;
 			}
 			bitfield >>= 1;
@@ -317,8 +722,7 @@ bool RGNFile::polyObjects(Handle &hdl, const SubDiv *subdiv,
 		poly.type = (segmentType == Polygon)
 		  ? ((quint32)(type & 0x7F)) << 8 : ((quint32)(type & 0x3F)) << 8;
 		if (segmentType == Line && type & 0x40)
-			poly.oneway = true;
-
+			poly.flags |= MapData::Poly::OneWay;
 
 		QPoint pos(subdiv->lon() + LS(lon, 24-subdiv->bits()),
 		  subdiv->lat() + LS(lat, 24-subdiv->bits()));
@@ -462,8 +866,8 @@ bool RGNFile::extPolyObjects(Handle &hdl, const SubDiv *subdiv, quint32 shift,
 		if (subtype & 0x80 && !readClassFields(hdl, segmentType, &poly, lbl,
 		  lblHdl))
 			return false;
-		if (subtype & 0x40 && !skipLclFields(hdl, segmentType == Line
-		  ? _linesLclFlags : _polygonsLclFlags))
+		if (subtype & 0x40 && !readLclFields(hdl, segmentType == Line
+		  ? _linesLclFlags : _polygonsLclFlags, segmentType, &poly))
 			return false;
 		quint32 gblFlags = (segmentType == Line)
 		  ? _linesGblFlags : _polygonsGblFlags;
@@ -516,7 +920,8 @@ bool RGNFile::pointObjects(Handle &hdl, const SubDiv *subdiv,
 		if (lbl && (labelPtr & 0x3FFFFF))
 			point.label = lbl->label(lblHdl, labelPtr & 0x3FFFFF,
 			  labelPtr & 0x400000, !(Style::isCountry(point.type)
-			  || Style::isState(point.type)), Style::isSpot(point.type));
+			  || Style::isState(point.type)), Style::isSpot(point.type)
+			  || Style::isSummit(point.type));
 		point.id = pointId(pos, point.type, point.label.text());
 
 		points->append(point);
@@ -552,7 +957,7 @@ bool RGNFile::extPointObjects(Handle &hdl, const SubDiv *subdiv,
 			return false;
 		if (subtype & 0x80 && !readClassFields(hdl, Point, &point, lbl, lblHdl))
 			return false;
-		if (subtype & 0x40 && !skipLclFields(hdl, _pointsLclFlags))
+		if (subtype & 0x40 && !readLclFields(hdl, _pointsLclFlags, Point, &point))
 			return false;
 		if (_pointsGblFlags && !skipGblFields(hdl, _pointsGblFlags))
 			return false;

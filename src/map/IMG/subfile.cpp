@@ -27,9 +27,9 @@ bool SubFile::seek(Handle &handle, quint32 pos) const
 		int blockNum = pos >> BLOCK_BITS;
 
 		if (handle._blockNum != blockNum) {
-			if (!handle._file.seek((quint64)blockNum << BLOCK_BITS))
+			if (!handle._file->seek((quint64)blockNum << BLOCK_BITS))
 				return false;
-			if (handle._file.read(handle._data.data(), (1<<BLOCK_BITS)) < 0)
+			if (handle._file->read(handle._data.data(), (1<<BLOCK_BITS)) < 0)
 				return false;
 			handle._blockNum = blockNum;
 		}
@@ -41,7 +41,7 @@ bool SubFile::seek(Handle &handle, quint32 pos) const
 	return true;
 }
 
-bool SubFile::readVUInt32(Handle &hdl, quint32 &val) const
+bool SubFile::readVUInt32(Handle &hdl, quint32 &val, quint32 *size) const
 {
 	quint8 bytes, shift, b;
 
@@ -68,6 +68,9 @@ bool SubFile::readVUInt32(Handle &hdl, quint32 &val) const
 			return false;
 		val |= (((quint32)b) << (i * 8)) >> (8 - shift);
 	}
+
+	if (size)
+		*size = 1 + bytes;
 
 	return true;
 }

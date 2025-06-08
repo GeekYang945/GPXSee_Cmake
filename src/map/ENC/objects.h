@@ -4,6 +4,7 @@
 #define TYPE(t) ((t)<<16)
 #define SUBTYPE(t, s) (((t)<<16)|(s))
 
+#define ADMARE 1
 #define AIRARE 2
 #define ACHBRT 3
 #define ACHARE 4
@@ -51,10 +52,11 @@
 #define LAKARE 69
 #define LNDARE 71
 #define LNDELV 72
+#define LNDRGN 73
 #define LNDMRK 74
 #define LIGHTS 75
 #define LOKBSN 79
-#define MARKUL 82
+#define MARCUL 82
 #define MORFAC 84
 #define NAVLNE 85
 #define OBSTRN 86
@@ -67,6 +69,7 @@
 #define PONTON 95
 #define PRCARE 96
 #define PYLONS 98
+#define RADRFL 101
 #define RADSTA 102
 #define RTPBCN 103
 #define RDOCAL 104
@@ -74,6 +77,7 @@
 #define RAILWY 106
 #define RCRTCL 108
 #define RECTRC 109
+#define RCTLPT 110
 #define RSCSTA 111
 #define RESARE 112
 #define RIVERS 114
@@ -85,6 +89,8 @@
 #define SLOTOP 126
 #define SMCFAC 128
 #define SOUNDG 129
+#define STSLNE 132
+#define TESARE 135
 #define TSELNE 145
 #define TSSBND 146
 #define TSSLPT 148
@@ -119,6 +125,7 @@
 #define I_GATCON 17031
 #define I_SLCONS 17032
 #define I_WTWAXS 17051
+#define I_BUNSTA 17054
 #define I_TERMNL 17064
 #define I_TRNBSN 17065
 #define I_WTWGAG 17067

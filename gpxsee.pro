@@ -3,8 +3,7 @@ unix:!macx:!android {
 } else {
     TARGET = GPXSee
 }
-VERSION = 13.27
-
+VERSION = 13.44
 
 QT += core \
     gui \
@@ -24,6 +23,8 @@ greaterThan(QT_MAJOR_VERSION, 5) {
 CONFIG += object_parallel_to_source
 INCLUDEPATH += ./src
 HEADERS += src/common/config.h \
+    src/GUI/legendentryitem.h \
+    src/GUI/legenditem.h \
     src/common/garmin.h \
     src/common/coordinates.h \
     src/common/hash.h \
@@ -118,6 +119,11 @@ HEADERS += src/common/config.h \
     src/data/gpsdumpparser.h \
     src/data/style.h \
     src/data/twonavparser.h \
+    src/data/txtparser.h \
+    src/data/vkxparser.h \
+    src/data/vtkparser.h \
+    src/map/ENC/data.h \
+    src/map/IMG/light.h \
     src/map/downloader.h \
     src/map/demloader.h \
     src/map/ENC/attributes.h \
@@ -272,6 +278,8 @@ HEADERS += src/common/config.h \
     src/data/geojsonparser.h
 
 SOURCES += src/main.cpp \
+    src/GUI/legendentryitem.cpp \
+    src/GUI/legenditem.cpp \
     src/common/coordinates.cpp \
     src/common/rectc.cpp \
     src/common/range.cpp \
@@ -343,6 +351,9 @@ SOURCES += src/main.cpp \
     src/GUI/pngexportdialog.cpp \
     src/GUI/projectioncombobox.cpp \
     src/GUI/passwordedit.cpp \
+    src/data/txtparser.cpp \
+    src/data/vkxparser.cpp \
+    src/data/vtkparser.cpp \
     src/map/downloader.cpp \
     src/map/demloader.cpp \
     src/map/ENC/atlasdata.cpp \
@@ -523,7 +534,7 @@ win32 {
     RESOURCES += theme-color.qrc
 
     QMAKE_TARGET_DESCRIPTION = GPXSee
-    QMAKE_TARGET_COPYRIGHT = Copyright (c) 2015-2024 Martin Tuma
+    QMAKE_TARGET_COPYRIGHT = Copyright (c) 2015-2025 Martin Tuma
     RC_ICONS = icons/app/gpxsee.ico \
         icons/formats/gpx.ico \
         icons/formats/tcx.ico \
@@ -558,7 +569,9 @@ win32 {
         icons/formats/trk.ico \
         icons/formats/gemf.ico \
         icons/formats/000.ico \
-        icons/formats/031.ico
+        icons/formats/031.ico \
+        icons/formats/vtk.ico \
+        icons/formats/vkx.ico
     DEFINES += _USE_MATH_DEFINES \
         NOGDI
 }

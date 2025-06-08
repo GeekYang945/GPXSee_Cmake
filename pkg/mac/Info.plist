@@ -736,6 +736,66 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>txt</string>
+			</array>
+			<key>CFBundleTypeMIMETypes</key>
+			<array>
+				<string>application/vnd.70mai.txt</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>70mai GPS Log File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>vtk</string>
+			</array>
+			<key>CFBundleTypeMIMETypes</key>
+			<array>
+				<string>application/vnd.velocitek.vtk</string>
+			</array>
+			<key>CFBundleTypeIconFile</key>
+			<string>icons/vtk.icns</string>
+			<key>CFBundleTypeName</key>
+			<string>Velocitek VTK File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>vkx</string>
+			</array>
+			<key>CFBundleTypeMIMETypes</key>
+			<array>
+				<string>application/vnd.vakaros.vkx</string>
+			</array>
+			<key>CFBundleTypeIconFile</key>
+			<string>icons/vkx.icns</string>
+			<key>CFBundleTypeName</key>
+			<string>Vakaros VKX File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
+
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>geo</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>org.geouri.geo</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
 	</array>
 
 	<key>UTImportedTypeDeclarations</key>
@@ -1669,6 +1729,8 @@
 			<string>https://iho.int/uploads/user/pubs/standards/s-57/31Main.pdf</string>
 			<key>UTTypeDescription</key>
 			<string>IHO S-57 Electronic Navigation Chart</string>
+			<key>UTTypeIconFile</key>
+			<string>icons/000.icns</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
@@ -1690,6 +1752,8 @@
 			<string>https://iho.int/uploads/user/pubs/standards/s-57/20ApB1.pdf</string>
 			<key>UTTypeDescription</key>
 			<string>IHO S-57 Electronic Navigation Catalogue</string>
+			<key>UTTypeIconFile</key>
+			<string>icons/031.icns</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
@@ -1702,6 +1766,73 @@
 				</array>
 				<key>public.mime-type</key>
 				<string>application/vnd.iho.s57-catalogue</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.70mai.txt</string>
+			<key>UTTypeReferenceURL</key>
+			<string>https://forum.mapillary.com/t/using-the-70mai-a810-dashcam-for-mapillary/9130/7?u=boris</string>
+			<key>UTTypeDescription</key>
+			<string>70mai GPS Log File</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>txt</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.70mai.txt</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.velocitek.vtk</string>
+			<key>UTTypeReferenceURL</key>
+			<string>https://github.com/velocitek/vtk_protocol</string>
+			<key>UTTypeDescription</key>
+			<string>Velocitek VTK File</string>
+			<key>UTTypeIconFile</key>
+			<string>icons/vtk.icns</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>vtk</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.velocitek.vtk</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.vakaros.vkx</string>
+			<key>UTTypeReferenceURL</key>
+			<string>https://github.com/vakaros/vkx</string>
+			<key>UTTypeDescription</key>
+			<string>Vakaros VKX File</string>
+			<key>UTTypeIconFile</key>
+			<string>icons/vkx.icns</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>vkx</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.vakaros.vkx</string>
 			</dict>
 		</dict>
 	</array>

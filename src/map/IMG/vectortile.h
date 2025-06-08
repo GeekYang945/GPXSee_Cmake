@@ -21,7 +21,7 @@ public:
 		delete _dem; delete _gmp;
 	}
 
-	bool init();
+	bool init(QFile *file = 0);
 	void clear();
 
 	const RectC &bounds() const {return _tre->bounds();}
@@ -30,14 +30,15 @@ public:
 
 	SubFile *file(SubFile::Type type);
 
-	void polys(const RectC &rect, const Zoom &zoom,
+	void polys(QFile *file, const RectC &rect, const Zoom &zoom,
 	  QList<MapData::Poly> *polygons, QList<MapData::Poly> *lines,
-	  MapData::PolyCache *cache, QMutex *lock);
-	void points(const RectC &rect, const Zoom &zoom,
-	  QList<MapData::Point> *points, MapData::PointCache *cache, QMutex *lock);
-	void elevations(const RectC &rect, const Zoom &zoom,
+	  MapData::PolyCache *cache, QMutex *cacheLock);
+	void points(QFile *file, const RectC &rect, const Zoom &zoom,
+	  QList<MapData::Point> *points, MapData::PointCache *cache,
+	  QMutex *cacheLock);
+	void elevations(QFile *file, const RectC &rect, const Zoom &zoom,
 	  QList<MapData::Elevation> *elevations, MapData::ElevationCache *cache,
-	  QMutex *lock);
+	  QMutex *cacheLock);
 
 	static bool isTileFile(SubFile::Type type)
 	{
@@ -48,25 +49,37 @@ public:
 	}
 
 	template<typename T>
-	SubFile *addFile(T *container, SubFile::Type type)
+	SubFile *addFile(T container, SubFile::Type type)
 	{
 		switch (type) {
 			case SubFile::TRE:
+				if (_tre)
+					return 0;
 				_tre = new TREFile(container);
 				return _tre;
 			case SubFile::RGN:
+				if (_rgn)
+					return 0;
 				_rgn = new RGNFile(container);
 				return _rgn;
 			case SubFile::LBL:
+				if (_lbl)
+					return 0;
 				_lbl = new LBLFile(container);
 				return _lbl;
 			case SubFile::NET:
+				if (_net)
+					return 0;
 				_net = new NETFile(container);
 				return _net;
 			case SubFile::NOD:
+				if (_nod)
+					return 0;
 				_nod = new NODFile(container);
 				return _nod;
 			case SubFile::DEM:
+				if (_dem)
+					return 0;
 				_dem = new DEMFile(container);
 				return _dem;
 			case SubFile::GMP:
@@ -78,7 +91,7 @@ public:
 	}
 
 private:
-	bool initGMP();
+	bool initGMP(QFile *file);
 	bool load(SubFile::Handle &rgnHdl, SubFile::Handle &lblHdl,
 	  SubFile::Handle &netHdl, SubFile::Handle &nodHdl);
 	bool loadDem(SubFile::Handle &demHdl);
@@ -92,6 +105,7 @@ private:
 	SubFile *_gmp;
 
 	int _loaded, _demLoaded;
+	QMutex _lock, _demLock;
 };
 
 }

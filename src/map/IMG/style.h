@@ -5,6 +5,7 @@
 #include <QBrush>
 #include <QFont>
 #include <QDebug>
+#include "light.h"
 #include "subfile.h"
 
 #define TYPE(t) ((t)<<8)
@@ -112,48 +113,64 @@ public:
 	const QList<quint32> &drawOrder() const {return _drawOrder;}
 	const QFont *font(Style::FontSize size, Style::FontSize defaultSize
 	  = Style::Normal) const;
-
-	const QImage *light() const {return &_light;}
+	const QImage *light(Light::Color color) const;
 	const QPoint &lightOffset() const {return _lightOffset;}
 
 	static bool isPOI(quint32 type)
 	  {return !((type >= TYPE(0x01) && type <= TYPE(0x1f))
-	  || (type >= 0x11400 && type < 0x11500));}
+		|| (type >= 0x11400 && type < 0x11500));}
 	static bool isContourLine(quint32 type)
 	  {return ((type >= TYPE(0x20) && type <= TYPE(0x25))
-	  || (type & 0xffff00) == TYPE(0x109));}
+		|| (type & 0xffff00) == TYPE(0x109));}
 	static bool isWaterArea(quint32 type)
 	  {return ((type >= TYPE(0x3c) && type <= TYPE(0x44))
-	  || (type & 0xffff00) == TYPE(0x10b));}
+		|| (type & 0xffff00) == TYPE(0x10b));}
 	static bool isWaterLine(quint32 type)
 	  {return (type == TYPE(0x26) || type == TYPE(0x18)
-	  || type == TYPE(0x1f));}
+		|| type == TYPE(0x1f));}
 	static bool isMilitaryArea(quint32 type)
 	  {return (type == TYPE(0x04) || type == 0x10901);}
 	static bool isNatureReserve(quint32 type)
 	  {return (type == TYPE(0x16) || type == 0x10a03);}
 	static bool isSpot(quint32 type)
 	  {return (type == TYPE(0x62) || type == TYPE(0x63));}
+	static bool isSummit(quint32 type)
+	  {return (type == 0x6616);}
 	static bool isMajorRoad(quint32 type)
 	  {return (type <= TYPE(0x04));}
 	static bool isCountry(quint32 type)
 	  {return (type >= 0x1400 && type <= 0x153f);}
 	static bool isState(quint32 type)
 	  {return (type == TYPE(0x1e));}
+	static bool isMarina(quint32 type)
+	  {return type == 0x10703;}
 	static bool isRaster(quint32 type)
 	  {return (type == 0x10613);}
 	static bool isDepthPoint(quint32 type)
-	  {return (type == 0x10301);}
+	  {return (type >= 0x10301 && type <= 0x10302);}
 	static bool isObstructionPoint(quint32 type)
 	  {return (type >= 0x10400 && type <= 0x10401);}
 	static bool isBuoy(quint32 type)
 	  {return (type >= 0x10200 && type < 0x10300);}
 	static bool isLight(quint32 type)
 	  {return (type >= 0x10100 && type < 0x10200);}
+	static bool isLabelPoint(quint32 type)
+	  {return type == 0x10500;}
+	static bool isDHPoint(quint32 type)
+	  {return type == 0x10300;}
 	static bool isMarinePoint(quint32 type)
 	  {return type >= 0x10100 && type < 0x10a00;}
-	static bool isMarina(quint32 type)
-	  {return type == 0x10703;}
+	static bool isStyledLine(quint32 type)
+	  {return type >= 0x10400 && type < 0x10700;}
+	static bool isCartographicLine(quint32 type)
+	  {return type == 0x10601;}
+	static bool isRecommendedRoute(quint32 type)
+	  {return type == 0x10108;}
+
+	static bool hasColorset(quint32 type)
+	  {return (isBuoy(type) && !(type == 0x1020d || type >= 0x10216));}
+
+	static QColor color(Light::Color c);
 
 private:
 	struct Section {
@@ -171,7 +188,7 @@ private:
 		bool extended;
 	};
 
-	bool parseTYPFile(SubFile *file);
+	bool parseTYPFile(SubFile *typ);
 	bool parsePoints(SubFile *file, SubFile::Handle &hdl,
 	  const Section &section);
 	bool parsePoint(SubFile *file, SubFile::Handle &hdl,
@@ -201,7 +218,7 @@ private:
 	/* Fonts and images must be initialized after QGuiApplication! */
 	QFont _large, _normal, _small, _extraSmall;
 
-	QImage _light;
+	QImage _light, _lightRed, _lightGreen, _lightYellow, _lightWhite;
 	QPoint _lightOffset;
 };
 
