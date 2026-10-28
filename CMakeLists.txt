@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(gpx_see_cmake)
+if(WIN32)
+    enable_language(RC)
+endif()
 # 指定c++标准的版本
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "-g")
@@ -18,7 +21,7 @@ set(CMAKE_AUTOUIC ON)
 #打开全局rcc，非必须，如需打开，注意修改33行的qrc文件名
 set(CMAKE_AUTORCC ON)
 
-add_definitions(-DAPP_VERSION="13.19")
+add_definitions(-DAPP_VERSION="16.20")
 
 # Add compiler flags for building executables (-fPIE)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${Qt5Widgets_EXECUTABLE_COMPILE_FLAGS}")
@@ -40,7 +43,9 @@ set(Projects_QT5_COMPONENTS
         Positioning
         Svg
         SerialPort
-        )
+        Multimedia
+        MultimediaWidgets
+)
 
 set(Projects_QT5_Includes
         ${Qt5Core_INCLUDE}
@@ -53,7 +58,9 @@ set(Projects_QT5_Includes
         ${Qt5Positioning_INCLUDE}
         ${Qt5Svg_INCLUDE}
         ${Qt5SerialPort_INCLUDE}
-        )
+        ${Qt5Multimedia_INCLUDE_DIRS}
+        ${Qt5MultimediaWidgets_INCLUDE_DIRS}
+)
 
 set(Projects_QT5_Libraries
         Qt5::Core
@@ -66,10 +73,20 @@ set(Projects_QT5_Libraries
         Qt5::Positioning
         Qt5::Svg
         Qt5::SerialPort
-        )
+        Qt5::Multimedia
+        Qt5::MultimediaWidgets
+)
 
 find_package(Qt5  COMPONENTS ${Projects_QT5_COMPONENTS} REQUIRED )
 find_package (Qt5LinguistTools)
+
+# MSYS2 的 Qt 和 zlib 都在同一个 mingw64 前缀下；把 Qt 的前缀加入搜索路径，
+# 否则 CLion 自带的 CMake 找不到 zlib。
+if(Qt5_DIR)
+    get_filename_component(QT_PREFIX "${Qt5_DIR}/../../.." ABSOLUTE)
+    list(APPEND CMAKE_PREFIX_PATH "${QT_PREFIX}")
+endif()
+find_package(ZLIB REQUIRED)
 
 INCLUDE_DIRECTORIES(
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -95,13 +112,13 @@ file(GLOB_RECURSE header_SRCS
         src/map/ENC/*.h
         src/map/IMG/*.h
         src/map/proj/*.h
-        )
+)
 
 
 #查找当前文件夹中的所有源代码文件，也可以通过Set命令将所有文件设置为一个变量
 file(GLOB_RECURSE SOURCES
         src/*.cpp
-        )
+)
 #查找设置当前文件夹中所有的头文件
 FILE(GLOB HEAD_FILES "./*.h")
 #查找设置当前文件夹中所有的ui文件
@@ -120,10 +137,7 @@ set(QRC_FILES
         theme-color.qrc
 )
 
-set(TS_FILES
-        lang/gpxsee_en.ts
-        lang/gpxsee_zh_CN.ts
-        )
+file(GLOB TS_FILES "lang/*.ts")
 
 set_source_files_properties(${TS_FILES} PROPERTIES OUTPUT_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/translations)
 
@@ -150,10 +164,20 @@ add_executable(${PROJECT_NAME} WIN32
         ${header_SRCS}
         ${QRC_FILES}
         ${qmFiles}
-        )
+)
+
+if(WIN32)
+    configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/pkg/windows/gpxsee.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/gpxsee.rc"
+            @ONLY)
+    target_sources(${PROJECT_NAME} PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/gpxsee.rc")
+endif()
 
 #添加Qt5依赖项
 target_link_libraries(${PROJECT_NAME}
         ${Projects_QT5_Libraries}
         Qt${QT_VERSION_MAJOR}::GuiPrivate
-        )
+        ZLIB::ZLIB
+)
