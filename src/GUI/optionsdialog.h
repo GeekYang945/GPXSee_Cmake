@@ -21,6 +21,7 @@ class ProjectionComboBox;
 class DirSelectWidget;
 class AuthenticationWidget;
 class PluginParameters;
+class QSlider;
 
 struct Options {
 	// Appearance
@@ -49,6 +50,9 @@ struct Options {
 	int outputProjection;
 	int inputProjection;
 	bool hidpiMap;
+	int pathsDetail;
+	int pointsDetail;
+	int hillshadingDetail;
 	// Data
 	int elevationFilter;
 	int speedFilter;
@@ -117,14 +121,14 @@ private slots:
 	void pauseDetectionSet(bool set);
 
 private:
-	QWidget *createMapPage();
-	QWidget *createAppearancePage();
-	QWidget *createDataPage();
-	QWidget *createPOIPage();
-	QWidget *createSystemPage();
-	QWidget *createExportPage();
-	QWidget *createDEMPage();
-	QWidget *createPositionPage();
+	QWidget *createMapPage(bool macos);
+	QWidget *createAppearancePage(bool macos);
+	QWidget *createDataPage(bool macos);
+	QWidget *createPOIPage(bool macos);
+	QWidget *createSystemPage(bool macos);
+	QWidget *createExportPage(bool macos);
+	QWidget *createDEMPage(bool macos);
+	QWidget *createPositionPage(bool macos);
 
 	Options &_options;
 
@@ -157,6 +161,9 @@ private:
 	ProjectionComboBox *_inputProjection;
 	QRadioButton *_hidpi;
 	QRadioButton *_lodpi;
+	QSlider *_pathsDetail;
+	QSlider *_pointsDetail;
+	QSlider *_hillshadingDetail;
 	// Data
 	OddSpinBox *_elevationFilter;
 	OddSpinBox *_speedFilter;

@@ -7,6 +7,7 @@
 
 #define SOI_MARKER       0xFFD8
 #define APP1_MARKER      0xFFE1
+#define SOS_MARKER       0xFFDA
 
 #define GPSIFDTag        34853
 #define ImageDescription 270
@@ -26,17 +27,28 @@ QString EXIFParser::text(TIFFFile &file, const IFDEntry &e) const
 	if (e.type != TIFF_ASCII || !e.count)
 		return QString();
 
-	if (e.count <= sizeof(e.offset))
-		return QString(QByteArray((const char *)&e.offset, sizeof(e.offset)));
+	int threshold = file.isBigTIFF() ? 8 : 4;
+	QByteArray ba(e.count, Qt::Initialization::Uninitialized);
 
-	if (!file.seek(e.offset))
-		return QString();
+	if (e.count <= threshold) {
+		if (file.isBigEndian()) {
+			for (int i = 0; i < e.count; i++)
+				*(ba.data() + i) = *((char*)&e.offset + threshold - 1 - i);
+			return ba;
+		} else
+			memcpy(ba.data(), (char*)&e.offset, ba.size());
+	} else {
+		if (!file.seek(e.offset))
+			return QString();
 
-	QByteArray str(file.read(e.count));
-	if (str.size() < (int)e.count)
-		return QString();
+		if (file.read(ba.data(), ba.size()) < ba.size())
+			return QString();
+	}
 
-	return QString(str);
+	while (ba.size() && ba.back() == '\0')
+		ba.resize(ba.size() - 1);
+
+	return ba;
 }
 
 QTime EXIFParser::time(TIFFFile &file, const IFDEntry &ts) const
@@ -64,17 +76,23 @@ QTime EXIFParser::time(TIFFFile &file, const IFDEntry &ts) const
 double EXIFParser::altitude(TIFFFile &file, const IFDEntry &alt,
   const IFDEntry &altRef) const
 {
+	quint32 num, den;
+
 	if (!(alt.type == TIFF_RATIONAL && alt.count == 1))
 		return NAN;
 
-	if (!file.seek(alt.offset))
-		return NAN;
+	if (file.isBigTIFF()) {
+		num = ((quint64)alt.offset) >> 32;
+		den = ((quint64)alt.offset) & 0xFFFFFFFF;
+	} else {
+		if (!file.seek(alt.offset))
+			return NAN;
 
-	quint32 num, den;
-	if (!file.readValue(num))
-		return NAN;
-	if (!file.readValue(den))
-		return NAN;
+		if (!file.readValue(num))
+			return NAN;
+		if (!file.readValue(den))
+			return NAN;
+	}
 
 	return (altRef.type == TIFF_BYTE && altRef.count == 1 && altRef.offset)
 	  ? -(num/(double)den) : num/(double)den;
@@ -116,8 +134,13 @@ Coordinates EXIFParser::coordinates(TIFFFile &file, const IFDEntry &lon,
 	if (!c.isValid())
 		return Coordinates();
 
-	char ew = file.isBE() ? lonRef.offset >> 24 : lonRef.offset;
-	char ns = file.isBE() ? latRef.offset >> 24 : latRef.offset;
+	int threshold = file.isBigTIFF() ? 8 : 4;
+	char ew = file.isBigEndian()
+	  ? lonRef.offset >> ((threshold - 1) * 8)
+	  : lonRef.offset;
+	char ns = file.isBigEndian()
+	  ? latRef.offset >> ((threshold - 1) * 8)
+	  : latRef.offset;
 
 	if (ew == 'W')
 		c.rlon() = -c.lon();
@@ -137,10 +160,20 @@ bool EXIFParser::readEntry(TIFFFile &file, const QSet<quint16> &tags,
 		return false;
 	if (!file.readValue(entry.type))
 		return false;
-	if (!file.readValue(entry.count))
-		return false;
-	if (!file.readValue(entry.offset))
-		return false;
+	if (file.isBigTIFF()) {
+		if (!file.readValue(entry.count))
+			return false;
+		if (!file.readValue(entry.offset))
+			return false;
+	} else {
+		quint32 count, offset;
+		if (!file.readValue(count))
+			return false;
+		entry.count = count;
+		if (!file.readValue(offset))
+			return false;
+		entry.offset = offset;
+	}
 
 	if (tags.contains(tag))
 		entries.insert(tag, entry);
@@ -148,19 +181,41 @@ bool EXIFParser::readEntry(TIFFFile &file, const QSet<quint16> &tags,
 	return true;
 }
 
-bool EXIFParser::readIFD(TIFFFile &file, quint32 offset,
+bool EXIFParser::readIFD(TIFFFile &file, qint64 offset,
   const QSet<quint16> &tags, QMap<quint16, IFDEntry> &entries) const
 {
-	quint16 count;
+	qint64 count;
 
 	if (!file.seek(offset))
 		return false;
-	if (!file.readValue(count))
-		return false;
+	if (file.isBigTIFF()) {
+		if (!file.readValue(count))
+			return false;
+	} else {
+		quint16 count16;
+		if (!file.readValue(count16))
+			return false;
+		count = count16;
+	}
 
-	for (quint16 i = 0; i < count; i++)
+	for (qint64 i = 0; i < count; i++)
 		if (!readEntry(file, tags, entries))
 			return false;
+
+	return true;
+}
+
+static bool nextIFD(TIFFFile &file, qint64 &offset)
+{
+	if (file.isBigTIFF()) {
+		if (!file.readValue(offset))
+			return false;
+	} else {
+		quint32 offset32;
+		if (!file.readValue(offset32))
+			return false;
+		offset = offset32;
+	}
 
 	return true;
 }
@@ -176,9 +231,13 @@ bool EXIFParser::parseTIFF(QFile *file, QVector<Waypoint> &waypoints)
 	QSet<quint16> IFD0Tags;
 	IFD0Tags << GPSIFDTag << ImageDescription;
 	QMap<quint16, IFDEntry> IFD0;
-	for (quint32 ifd = tiff.ifd(); ifd; ) {
-		if (!readIFD(tiff, ifd, IFD0Tags, IFD0) || !tiff.readValue(ifd)) {
+	for (qint64 ifd = tiff.ifd(); ifd; ) {
+		if (!readIFD(tiff, ifd, IFD0Tags, IFD0)) {
 			_errorString = "Invalid IFD0";
+			return false;
+		}
+		if (!nextIFD(tiff, ifd)) {
+			_errorString = "Error reading next IFD0";
 			return false;
 		}
 	}
@@ -192,9 +251,13 @@ bool EXIFParser::parseTIFF(QFile *file, QVector<Waypoint> &waypoints)
 	  << GPSLongitudeRef << GPSAltitude << GPSAltitudeRef << GPSDateStamp
 	  << GPSTimeStamp;
 	QMap<quint16, IFDEntry> GPSIFD;
-	for (quint32 ifd = IFD0.value(GPSIFDTag).offset; ifd; ) {
-		if (!readIFD(tiff, ifd, GPSIFDTags, GPSIFD) || !tiff.readValue(ifd)) {
+	for (qint64 ifd = IFD0.value(GPSIFDTag).offset; ifd; ) {
+		if (!readIFD(tiff, ifd, GPSIFDTags, GPSIFD)) {
 			_errorString = "Invalid GPS IFD";
+			return false;
+		}
+		if (!nextIFD(tiff, ifd)) {
+			_errorString = "Error reading next GPS IFD";
 			return false;
 		}
 	}
@@ -210,12 +273,18 @@ bool EXIFParser::parseTIFF(QFile *file, QVector<Waypoint> &waypoints)
 	Waypoint wp(c);
 	wp.setName(Util::file2name(file->fileName()));
 	wp.addImage(file->fileName());
-	wp.setElevation(altitude(tiff, GPSIFD.value(GPSAltitude),
-	  GPSIFD.value(GPSAltitudeRef)));
-	wp.setTimestamp(QDateTime(QDate::fromString(text(tiff,
-	  GPSIFD.value(GPSDateStamp)), "yyyy:MM:dd"), time(tiff,
-	  GPSIFD.value(GPSTimeStamp)), QTimeZone::utc()));
-	wp.setDescription(text(tiff, IFD0.value(ImageDescription)).trimmed());
+	const QPixmap *pm = Waypoint::symbolIcon("Photo");
+	if (pm)
+		wp.setStyle(PointStyle(*pm));
+	if (GPSIFD.contains(GPSAltitude))
+		wp.setElevation(altitude(tiff, GPSIFD.value(GPSAltitude),
+		  GPSIFD.value(GPSAltitudeRef)));
+	if (GPSIFD.contains(GPSDateStamp) && GPSIFD.contains(GPSTimeStamp))
+		wp.setTimestamp(QDateTime(QDate::fromString(text(tiff,
+		  GPSIFD.value(GPSDateStamp)), "yyyy:MM:dd"), time(tiff,
+		  GPSIFD.value(GPSTimeStamp)), QTimeZone::utc()));
+	if (IFD0.contains(ImageDescription))
+		wp.setDescription(text(tiff, IFD0.value(ImageDescription)).trimmed());
 
 	waypoints.append(wp);
 
@@ -250,7 +319,8 @@ bool EXIFParser::parse(QFile *file, QList<TrackData> &tracks,
 				return parseTIFF(file, waypoints);
 			else
 				break;
-		}
+		} else if (marker == SOS_MARKER)
+			break;
 	}
 
 	_errorString = "No EXIF data found";

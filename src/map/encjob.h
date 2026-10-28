@@ -1,8 +1,9 @@
 #ifndef ENCJOB_H
 #define ENCJOB_H
 
-#include <QtConcurrent>
-#include "ENC/rastertile.h"
+#include <QtConcurrentMap>
+#include <QFutureWatcher>
+#include "ENC/rastertile_enc.h"
 
 class ENCJob : public QObject
 {

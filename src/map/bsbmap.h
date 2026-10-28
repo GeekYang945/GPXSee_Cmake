@@ -26,7 +26,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -44,7 +44,7 @@ private:
 	bool parseRGB(const QByteArray &line);
 	bool readHeader(QFile &file);
 	bool createProjection(const QString &datum, const QString &proj,
-	  double params[9], const Coordinates &c);
+	  const double params[9], const Coordinates &c);
 	bool createTransform(QList<ReferencePoint> &points);
 	QImage readImage();
 	bool readRow(QFile &file, char bits, uchar *buf);

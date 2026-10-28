@@ -23,7 +23,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -32,6 +32,8 @@ public:
 	static Map *create(const QString &path, const Projection &proj, bool *isDir);
 
 private:
+	bool parsePRJFile(const QString &file);
+
 	Projection _projection;
 	Transform _transform;
 	Image *_img;

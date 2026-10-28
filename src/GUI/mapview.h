@@ -17,7 +17,6 @@
 #include "palette.h"
 #include "graphicsscene.h"
 
-
 class QGeoPositionInfoSource;
 class QGeoPositionInfo;
 class QGestureEvent;
@@ -54,13 +53,6 @@ public:
 	};
 	Q_DECLARE_FLAGS(Flags, Flag)
 
-	enum Layer {
-		NoLayers = 0,
-		Raster = 1,
-		Vector = 2
-	};
-	Q_DECLARE_FLAGS(Layers, Layer)
-
 	MapView(Map *map, POI *poi, QWidget *parent = 0);
 
 	QList<PathItem *> loadData(const Data &data);
@@ -96,7 +88,7 @@ public:
 	void setPOIColor(const QColor &color);
 	void setMapOpacity(int opacity);
 	void setBackgroundColor(const QColor &color);
-	void useOpenGL(bool use);
+	bool useOpenGL(bool use);
 	void useAntiAliasing(bool use);
 	void setCoordinatesFormat(CoordinatesFormat format);
 	void setTimeZone(const QTimeZone &zone);
@@ -104,14 +96,11 @@ public:
 	void setDevicePixelRatio(qreal ratio);
 	void clearMapCache();
 	void fitContentToSize();
+	void selectStyle(int style);
+	void selectLayer(int layer);
 
 	RectC boundingRect() const;
 	const Projection &inputProjection() const {return _inputProjection;}
-
-#ifdef Q_OS_ANDROID
-signals:
-	void clicked(const QPoint &pos);
-#endif // Q_OS_ANDROID
 
 public slots:
 	void showMap(bool show);
@@ -124,6 +113,7 @@ public slots:
 	void showTicks(bool show);
 	void showMarkers(bool show);
 	void showMarkerInfo(MarkerInfoItem::Type type);
+	void showVideos(bool show);
 	void showOverlappedPOIs(bool show);
 	void showWaypointLabels(bool show);
 	void showWaypointIcons(bool show);
@@ -132,13 +122,13 @@ public slots:
 	void showAreas(bool show);
 	void showWaypoints(bool show);
 	void showRouteWaypoints(bool show);
+	void showTrackWaypoints(bool show);
 	void setMarkerPosition(qreal pos);
 	void followPosition(bool follow);
 	void showMotionInfo(bool show);
 	void showLegend(bool show);
 	void useStyles(bool use);
 	void drawHillShading(bool draw);
-	void selectLayers(MapView::Layers layers);
 
 private slots:
 	void updatePOI();
@@ -209,7 +199,8 @@ private:
 	bool _showMap, _showTracks, _showRoutes, _showAreas, _showWaypoints,
 	  _showWaypointLabels, _showPOI, _showPOILabels, _showRouteWaypoints,
 	  _showMarkers, _showPathTicks, _showPOIIcons, _showWaypointIcons,
-	  _showPosition, _showPositionCoordinates, _showMotionInfo;
+	  _showPosition, _showPositionCoordinates, _showMotionInfo, _showVideos,
+	  _showTrackWaypoints;
 	MarkerInfoItem::Type _markerInfoType;
 	bool _overlapPOIs, _followPosition;
 	int _trackWidth, _routeWidth, _areaWidth;
@@ -220,7 +211,8 @@ private:
 	bool _infoBackground;
 
 	bool _hillShading;
-	Layers _layers;
+	int _style;
+	int _layer;
 
 	int _digitalZoom;
 	bool _plot;
@@ -233,7 +225,5 @@ private:
 	int _pinchZoom;
 	int _wheelDelta;
 };
-
-Q_DECLARE_OPERATORS_FOR_FLAGS(MapView::Layers)
 
 #endif // MAPVIEW_H

@@ -15,10 +15,12 @@ public:
 	TrackItem(const Track &track, Map *map, QGraphicsItem *parent = 0);
 
 	ToolTip info(bool extended) const;
+	bool isVideo() const {return _video;}
 
 private:
 	qreal _time;
 	qreal _movingTime;
+	bool _video;
 };
 
 #endif // TRACKITEM_H

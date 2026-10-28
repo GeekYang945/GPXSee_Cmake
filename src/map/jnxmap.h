@@ -31,7 +31,7 @@ public:
 	Coordinates xy2ll(const QPointF &p);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
@@ -43,11 +43,8 @@ public:
 
 private:
 	struct Tile {
-		qint32 top, right, bottom, left;
-		quint16 width, height;
-		quint32 size;
 		quint32 offset;
-
+		quint32 size;
 		QPointF pos;
 	};
 
@@ -68,12 +65,14 @@ private:
 	};
 
 	struct Ctx {
+		Map *map;
 		QPainter *painter;
 		QFile *file;
 		qreal ratio;
+		int zoom;
 
-		Ctx(QPainter *painter, QFile *file, qreal ratio)
-		  : painter(painter), file(file), ratio(ratio) {}
+		Ctx(Map *map, int zoom, QFile *file, QPainter *painter, qreal ratio)
+		  : map(map), painter(painter), file(file), ratio(ratio), zoom(zoom) {}
 	};
 
 
@@ -84,7 +83,6 @@ private:
 	void clearTiles();
 
 	static bool cb(Tile *tile, void *context);
-	static QPixmap pixmap(const Tile *tile, QFile *file);
 
 	QFile _file;
 	QList<Zoom*> _zooms;

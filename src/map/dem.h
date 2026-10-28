@@ -38,6 +38,7 @@ public:
 
 	static double elevation(const Coordinates &c);
 	static MatrixD elevation(const MatrixC &m);
+	static bool elevation(const RectC &rect);
 
 	static QList<Area> tiles();
 
@@ -66,9 +67,9 @@ private:
 	static QMutex _lock;
 };
 
-inline HASH_T qHash(const DEM::Tile &tile)
+inline HASH_T qHash(const DEM::Tile &tile, HASH_T seed = 0)
 {
-	return (qHash(tile.lon()) ^ qHash(tile.lat()));
+	return qHashMulti(seed, tile.lon(), tile.lat());
 }
 
 #ifndef QT_NO_DEBUG

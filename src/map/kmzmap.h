@@ -1,13 +1,14 @@
 #ifndef KMZMAP_H
 #define KMZMAP_H
 
-#include <QImage>
+#include <QFile>
+#include "common/zip.h"
 #include "projection.h"
 #include "transform.h"
 #include "map.h"
 
 class QXmlStreamReader;
-class QZipReader;
+class Zip;
 
 class KMZMap : public Map
 {
@@ -15,7 +16,6 @@ class KMZMap : public Map
 
 public:
 	KMZMap(const QString &fileName, QObject *parent = 0);
-	~KMZMap();
 
 	RectC llBounds() {return _llbounds;}
 	QRectF bounds();
@@ -32,7 +32,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -58,7 +58,7 @@ private:
 
 	class Tile {
 	public:
-		Tile(const Overlay &overlay, QZipReader &zip);
+		Tile(const Overlay &overlay, const Zip &zip);
 
 		bool operator==(const Tile &other) const
 		  {return _overlay.path() == other._overlay.path();}
@@ -104,8 +104,10 @@ private:
 	double number(QXmlStreamReader &reader);
 
 	void draw(QPainter *painter, const QRectF &rect, int mapIndex);
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &pos, const QRectF &rect) const;
 
-	bool createTiles(const QList<Overlay> &overlays, QZipReader &zip);
+	bool createTiles(const QList<Overlay> &overlays);
 	void computeZooms();
 	void computeBounds();
 	void computeLLBounds();
@@ -125,7 +127,8 @@ private:
 	QVector<Bounds> _bounds;
 	int _zoom;
 	int _mapIndex;
-	QZipReader *_zip;
+	QFile _file;
+	Zip _zip;
 	qreal _adjust;
 	Projection _projection;
 	qreal _mapRatio;

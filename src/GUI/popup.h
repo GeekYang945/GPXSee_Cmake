@@ -1,8 +1,8 @@
 #ifndef POPUP_H
 #define POPUP_H
 
-class QPoint;
-class QWidget;
+#include <QFrame>
+
 class ToolTip;
 
 class Popup

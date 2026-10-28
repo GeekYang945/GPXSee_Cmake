@@ -1,10 +1,12 @@
 #include <QDataStream>
 #include <QPainter>
-#include <QPixmapCache>
-#include <QtConcurrent>
+#include <QtConcurrentMap>
 #include "osm.h"
 #include "tile.h"
+#include "tilecache.h"
 #include "gemfmap.h"
+
+using namespace OSM;
 
 static bool readSources(QDataStream &stream)
 {
@@ -22,7 +24,7 @@ static bool readSources(QDataStream &stream)
 	return (stream.status() == QDataStream::Ok);
 }
 
-QRect GEMFMap::rect(const Zoom &zoom) const
+QRect GEMFMap::rect(const Zoom &zoom)
 {
 	QRect r;
 	const QList<Region> &list = zoom.ranges;
@@ -79,14 +81,14 @@ bool GEMFMap::computeBounds()
 	if (!r.isValid())
 		return false;
 
-	Coordinates tl(OSM::tile2ll(r.topLeft(), z.level));
+	Coordinates tl(tile2ll(r.topLeft(), z.level));
 	tl.rlat() = -tl.lat();
-	Coordinates br(OSM::tile2ll(QPoint(r.right() + 1, r.bottom() + 1), z.level));
+	Coordinates br(tile2ll(QPoint(r.right() + 1, r.bottom() + 1), z.level));
 	br.rlat() = -br.lat();
 	// Workaround of broken zoom levels 0 and 1 due to numerical
 	// instability
-	tl.rlat() = qMin(tl.lat(), OSM::BOUNDS.top());
-	br.rlat() = qMax(br.lat(), OSM::BOUNDS.bottom());
+	tl.rlat() = qMin(tl.lat(), BOUNDS.top());
+	br.rlat() = qMax(br.lat(), BOUNDS.bottom());
 
 	_bounds = RectC(tl, br);
 
@@ -126,9 +128,36 @@ GEMFMap::GEMFMap(const QString &fileName, QObject *parent)
 	_valid = true;
 }
 
+void GEMFMap::load(const Projection &in, const Projection &out,
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
+{
+	Q_UNUSED(in);
+	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
+
+	_mapRatio = hidpi ? deviceRatio : 1.0;
+	_factor = zoom2scale(_zooms.at(_zi).level, _tileSize) * _mapRatio;
+
+	if (!_file.open(QIODevice::ReadOnly))
+		qWarning("%s: %s", qUtf8Printable(_file.fileName()),
+		  qUtf8Printable(_file.errorString()));
+}
+
+void GEMFMap::unload()
+{
+	_file.close();
+}
+
 qreal GEMFMap::resolution(const QRectF &rect)
 {
 	return OSM::resolution(rect.center(), _zooms.at(_zi).level, tileSize());
+}
+
+QRectF GEMFMap::bounds()
+{
+	return QRectF(ll2xy(_bounds.topLeft()), ll2xy(_bounds.bottomRight()));
 }
 
 int GEMFMap::zoomFit(const QSize &size, const RectC &rect)
@@ -136,10 +165,9 @@ int GEMFMap::zoomFit(const QSize &size, const RectC &rect)
 	if (!rect.isValid())
 		_zi = _zooms.size() - 1;
 	else {
-		QRectF tbr(OSM::ll2m(rect.topLeft()), OSM::ll2m(rect.bottomRight()));
+		QRectF tbr(ll2m(rect.topLeft()), ll2m(rect.bottomRight()));
 		QPointF sc(tbr.width() / size.width(), tbr.height() / size.height());
-		int zoom = OSM::scale2zoom(qMax(sc.x(), -sc.y()) / _mapRatio,
-		  _tileSize);
+		int zoom = scale2zoom(qMax(sc.x(), -sc.y()) / _mapRatio, _tileSize);
 
 		_zi = 0;
 		for (int i = 1; i < _zooms.size(); i++) {
@@ -149,54 +177,42 @@ int GEMFMap::zoomFit(const QSize &size, const RectC &rect)
 		}
 	}
 
+	_factor = zoom2scale(_zooms.at(_zi).level, _tileSize) * _mapRatio;
+
 	return _zi;
+}
+
+void GEMFMap::setZoom(int zoom)
+{
+	_zi = zoom;
+	_factor = zoom2scale(_zooms.at(_zi).level, _tileSize) * _mapRatio;
 }
 
 int GEMFMap::zoomIn()
 {
 	_zi = qMin(_zi + 1, _zooms.size() - 1);
+	_factor = zoom2scale(_zooms.at(_zi).level, _tileSize) * _mapRatio;
+
 	return _zi;
 }
 
 int GEMFMap::zoomOut()
 {
 	_zi = qMax(_zi - 1, 0);
-	return _zi;
-}
+	_factor = zoom2scale(_zooms.at(_zi).level, _tileSize) * _mapRatio;
 
-QRectF GEMFMap::bounds()
-{
-	return QRectF(ll2xy(_bounds.topLeft()), ll2xy(_bounds.bottomRight()));
+	return _zi;
 }
 
 QPointF GEMFMap::ll2xy(const Coordinates &c)
 {
-	qreal scale = OSM::zoom2scale(_zooms.at(_zi).level, _tileSize);
-	QPointF m = OSM::ll2m(c);
-	return QPointF(m.x() / scale, m.y() / -scale) / _mapRatio;
+	QPointF m = ll2m(c);
+	return QPointF(m.x(), -m.y()) / _factor;
 }
 
 Coordinates GEMFMap::xy2ll(const QPointF &p)
 {
-	qreal scale = OSM::zoom2scale(_zooms.at(_zi).level, _tileSize);
-	return OSM::m2ll(QPointF(p.x() * scale, -p.y() * scale) * _mapRatio);
-}
-
-void GEMFMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
-{
-	Q_UNUSED(in);
-	Q_UNUSED(out);
-
-	_mapRatio = hidpi ? deviceRatio : 1.0;
-	if (!_file.open(QIODevice::ReadOnly))
-		qWarning("%s: %s", qUtf8Printable(_file.fileName()),
-		  qUtf8Printable(_file.errorString()));
-}
-
-void GEMFMap::unload()
-{
-	_file.close();
+	return m2ll(QPointF(p.x(), -p.y()) * _factor);
 }
 
 qreal GEMFMap::tileSize() const
@@ -244,11 +260,9 @@ void GEMFMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 {
 	Q_UNUSED(flags);
 	const Zoom &z = _zooms.at(_zi);
-	qreal scale = OSM::zoom2scale(z.level, _tileSize);
-	QPoint tile = OSM::mercator2tile(QPointF(rect.topLeft().x() * scale,
-	  -rect.topLeft().y() * scale) * _mapRatio, z.level);
-	QPointF tlm(OSM::tile2mercator(tile, z.level));
-	QPointF tl(QPointF(tlm.x() / scale, tlm.y() / scale) / _mapRatio);
+	QPoint tile = mercator2tile(QPointF(rect.topLeft().x(),
+	  -rect.topLeft().y()) * _factor, z.level);
+	QPointF tl(tile2mercator(tile, z.level) / _factor);
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	int width = ceil(s.width() / tileSize());
 	int height = ceil(s.height() / tileSize());
@@ -257,17 +271,15 @@ void GEMFMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
-			QPixmap pm;
 			QPoint t(tile.x() + i, tile.y() + j);
-			QString key = path() + "-" + QString::number(z.level) + "_"
-			  + QString::number(t.x()) + "_" + QString::number(t.y());
-
-			if (QPixmapCache::find(key, &pm)) {
+			TileCache::Key key(this, z.level, t);
+			const QPixmap *pm = TileCache::object(key);
+			if (pm) {
 				QPointF tp(tl.x() + (t.x() - tile.x()) * tileSize(),
 				  tl.y() + (t.y() - tile.y()) * tileSize());
 				drawTile(painter, pm, tp);
 			} else
-				tiles.append(DataTile(t, tileData(t), key));
+				tiles.append(DataTile(t, z.level, tileData(t)));
 		}
 	}
 
@@ -276,22 +288,27 @@ void GEMFMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	for (int i = 0; i < tiles.size(); i++) {
 		const DataTile &mt = tiles.at(i);
-		QPixmap pm(mt.pixmap());
-		if (pm.isNull())
+		if (mt.pixmap().isNull())
 			continue;
 
-		QPixmapCache::insert(mt.key(), pm);
+		TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+		  new QPixmap(mt.pixmap()));
 
 		QPointF tp(tl.x() + (mt.xy().x() - tile.x()) * tileSize(),
 		  tl.y() + (mt.xy().y() - tile.y())* tileSize());
-		drawTile(painter, pm, tp);
+		drawTile(painter, &mt.pixmap(), tp);
 	}
 }
 
-void GEMFMap::drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp)
+void GEMFMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
 {
-	pixmap.setDevicePixelRatio(_mapRatio);
-	painter->drawPixmap(tp, pixmap);
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 Map *GEMFMap::create(const QString &path, const Projection &proj, bool *isDir)

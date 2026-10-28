@@ -15,7 +15,7 @@ public:
 	qreal resolution(const QRectF &rect);
 
 	int zoom() const {return _zoom;}
-	void setZoom(int zoom) {_zoom = zoom;}
+	void setZoom(int zoom);
 	int zoomFit(const QSize &size, const RectC &rect);
 	int zoomIn();
 	int zoomOut();
@@ -26,7 +26,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -38,7 +38,8 @@ private:
 	int limitZoom(int zoom) const;
 	qreal tileSize() const;
 	QByteArray tileData(int zoom, const QPoint &tile) const;
-	void drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp);
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &tp) const;
 
 	QSqlDatabase _db;
 
@@ -47,6 +48,8 @@ private:
 	int _zoom;
 	int _tileSize;
 	qreal _mapRatio;
+
+	qreal _factor;
 
 	bool _valid;
 	QString _errorString;

@@ -4,78 +4,10 @@
 #include <QDebug>
 #include <QSqlDatabase>
 #include <QVector>
-#include <QImageReader>
-#include <QBuffer>
-#include <QPixmap>
-#include <QtConcurrent>
+#include "mvtjob.h"
 #include "map.h"
 
-class MBTile
-{
-public:
-	MBTile(int zoom, int overzoom, int scaledSize, const QPoint &xy,
-	  const QByteArray &data, const QString &key) : _zoom(zoom),
-	  _overzoom(overzoom), _scaledSize(scaledSize), _xy(xy), _data(data),
-	  _key(key) {}
-
-	const QPoint &xy() const {return _xy;}
-	const QString &key() const {return _key;}
-	const QPixmap &pixmap() const {return _pixmap;}
-
-	void load() {
-		QByteArray format(_overzoom
-		  ? QByteArray::number(_zoom) + ';' + QByteArray::number(_overzoom)
-		  : QByteArray::number(_zoom));
-		QBuffer buffer(&_data);
-		QImageReader reader(&buffer, format);
-		if (_scaledSize)
-			reader.setScaledSize(QSize(_scaledSize, _scaledSize));
-		_pixmap = QPixmap::fromImage(reader.read());
-	}
-
-private:
-	int _zoom;
-	int _overzoom;
-	int _scaledSize;
-	QPoint _xy;
-	QByteArray _data;
-	QString _key;
-	QPixmap _pixmap;
-};
-
-class MBTilesMapJob : public QObject
-{
-	Q_OBJECT
-
-public:
-	MBTilesMapJob(const QList<MBTile> &tiles) : _tiles(tiles) {}
-
-	void run()
-	{
-		connect(&_watcher, &QFutureWatcher<void>::finished, this,
-		  &MBTilesMapJob::handleFinished);
-		_future = QtConcurrent::map(_tiles, &MBTile::load);
-		_watcher.setFuture(_future);
-	}
-	void cancel(bool wait)
-	{
-		_future.cancel();
-		if (wait)
-			_future.waitForFinished();
-	}
-	const QList<MBTile> &tiles() const {return _tiles;}
-
-signals:
-	void finished(MBTilesMapJob *job);
-
-private slots:
-	void handleFinished() {emit finished(this);}
-
-private:
-	QFutureWatcher<void> _watcher;
-	QFuture<void> _future;
-	QList<MBTile> _tiles;
-};
+class QPixmap;
 
 class MBTilesMap : public Map
 {
@@ -90,8 +22,8 @@ public:
 	RectC llBounds() {return _bounds;}
 	qreal resolution(const QRectF &rect);
 
-	int zoom() const {return _zi;}
-	void setZoom(int zoom) {_zi = zoom;}
+	int zoom() const {return _zoom;}
+	void setZoom(int zoom);
 	int zoomFit(const QSize &size, const RectC &rect);
 	int zoomIn();
 	int zoomOut();
@@ -102,8 +34,11 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
+
+	QStringList styles(int &defaultStyle) const;
+	bool hillShading() const;
 
 	bool isValid() const {return _valid;}
 	QString errorString() const {return _errorString;}
@@ -111,7 +46,7 @@ public:
 	static Map *create(const QString &path, const Projection &proj, bool *isDir);
 
 private slots:
-	void jobFinished(MBTilesMapJob *job);
+	void jobFinished(MVTJob *job);
 
 private:
 	struct Zoom {
@@ -126,21 +61,25 @@ private:
 	bool getMaxZoom(int &zoom);
 	bool getZooms();
 	bool getBounds();
-	bool getTileSize();
+	bool getTileSizeAndStyle();
 	void getTileFormat();
 	void getTilePixelRatio();
 	void getName();
+
 	qreal tileSize() const;
-	qreal coordinatesRatio() const;
-	qreal imageRatio() const;
 	QByteArray tileData(int zoom, const QPoint &tile) const;
-	void drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp);
-	bool isRunning(const QString &key) const;
-	void runJob(MBTilesMapJob *job);
-	void removeJob(MBTilesMapJob *job);
-	void cancelJobs(bool wait);
 	QPointF tilePos(const QPointF &tl, const QPoint &tc, const QPoint &tile,
 	  unsigned overzoom) const;
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &tp) const;
+
+	QString key(int zoom, const QPoint &xy) const;
+	bool isRunning(int zoom, const QPoint &xy) const;
+	void runJob(MVTJob *job);
+	void removeJob(MVTJob *job);
+	void cancelJobs(bool wait);
+
+	const MVT::Style *defaultStyle() const;
 
 	friend QDebug operator<<(QDebug dbg, const Zoom &zoom);
 
@@ -149,13 +88,17 @@ private:
 	QString _name;
 	RectC _bounds;
 	QVector<Zoom> _zooms, _zoomsBase;
-	int _zi;
+	int _zoom;
 	int _tileSize;
+	const MVT::Style *_style;
 	qreal _mapRatio, _tileRatio;
-	bool _scalable;
-	int _scaledSize;
+	bool _hillShading, _mvt;
+	QStringList _layers;
 
-	QList<MBTilesMapJob*> _jobs;
+	qreal _factor;
+	qreal _coordinatesRatio;
+
+	QList<MVTJob*> _jobs;
 
 	bool _valid;
 	QString _errorString;

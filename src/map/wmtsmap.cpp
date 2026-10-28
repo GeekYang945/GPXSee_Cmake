@@ -1,14 +1,14 @@
 #include <QtMath>
 #include <QPainter>
 #include <QDir>
-#include <QPixmapCache>
-#include <QtConcurrent>
+#include <QtConcurrentMap>
 #include "common/rectc.h"
 #include "common/wgs84.h"
 #include "common/programpaths.h"
 #include "transform.h"
 #include "tileloader.h"
 #include "tile.h"
+#include "tilecache.h"
 #include "wmts.h"
 #include "wmtsmap.h"
 
@@ -20,13 +20,14 @@ WMTSMap::WMTSMap(const QString &fileName, const QString &name,
   QObject *parent) : Map(fileName, parent), _name(name), _tileLoader(0),
   _zoom(0), _mapRatio(1.0), _tileRatio(tileRatio)
 {
-	QString tilesDir(QDir(ProgramPaths::tilesDir()).filePath(_name));
+	QDir tilesDir(QDir(ProgramPaths::tilesDir()).filePath(_name));
 
-	_tileLoader = new TileLoader(tilesDir, this);
+	_tileLoader = new TileLoader(tilesDir, QFileInfo(fileName).absoluteDir(),
+	  this);
 	_tileLoader->setHeaders(setup.headers());
 	connect(_tileLoader, &TileLoader::finished, this, &WMTSMap::tilesLoaded);
 
-	_wmts = new WMTS(QDir(tilesDir).filePath(CAPABILITIES_FILE), setup, this);
+	_wmts = new WMTS(tilesDir.filePath(CAPABILITIES_FILE), setup, this);
 	connect(_wmts, &WMTS::downloadFinished, this, &WMTSMap::wmtsReady);
 	if (_wmts->isReady())
 		init();
@@ -48,10 +49,13 @@ void WMTSMap::wmtsReady()
 }
 
 void WMTSMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 }
@@ -59,7 +63,7 @@ void WMTSMap::load(const Projection &in, const Projection &out,
 void WMTSMap::clearCache()
 {
 	_tileLoader->clearCache();
-	QPixmapCache::clear();
+	TileCache::clear();
 }
 
 double WMTSMap::sd2res(double scaleDenominator) const
@@ -172,11 +176,6 @@ qreal WMTSMap::coordinatesRatio() const
 	return _mapRatio > 1.0 ? _mapRatio / _tileRatio : 1.0;
 }
 
-qreal WMTSMap::imageRatio() const
-{
-	return _mapRatio > 1.0 ? _mapRatio : _tileRatio;
-}
-
 QSizeF WMTSMap::tileSize(const WMTS::Zoom &zoom) const
 {
 	return QSizeF(zoom.tile().width() / coordinatesRatio(),
@@ -195,9 +194,18 @@ void WMTSMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	QVector<TileLoader::Tile> fetchTiles;
 	fetchTiles.reserve((br.x() - tl.x()) * (br.y() - tl.y()));
-	for (int i = tl.x(); i < br.x(); i++)
-		for (int j = tl.y(); j < br.y(); j++)
-			fetchTiles.append(TileLoader::Tile(QPoint(i, j), z.id()));
+	for (int i = tl.x(); i < br.x(); i++) {
+		for (int j = tl.y(); j < br.y(); j++) {
+			QPoint xy(i, j);
+			TileCache::Key key(this, _zoom, xy);
+			const QPixmap *pm = TileCache::object(key);
+			if (pm) {
+				QPointF tp(xy.x() * ts.width(), xy.y() * ts.height());
+				drawTile(painter, pm, tp);
+			} else
+				fetchTiles.append(TileLoader::Tile(xy, z.id()));
+		}
+	}
 
 	if (flags & Map::Block)
 		_tileLoader->loadTilesSync(fetchTiles);
@@ -207,37 +215,41 @@ void WMTSMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QList<FileTile> renderTiles;
 	for (int i = 0; i < fetchTiles.count(); i++) {
 		const TileLoader::Tile &t = fetchTiles.at(i);
-		if (t.file().isNull())
-			continue;
+		const QString &path = t.files().first();
 
-		QPixmap pm;
-		if (QPixmapCache::find(t.file(), &pm)) {
-			QPointF tp(t.xy().x() * ts.width(), t.xy().y() * ts.height());
-			drawTile(painter, pm, tp);
-		} else
-			renderTiles.append(FileTile(t.xy(), t.file()));
+		if (!(path.isNull() || path == NULLFILE))
+			renderTiles.append(FileTile(t.xy(), path));
 	}
 
-	QFuture<void> future = QtConcurrent::map(renderTiles, &FileTile::load);
-	future.waitForFinished();
+	if (!renderTiles.isEmpty()) {
+		QFuture<void> future = QtConcurrent::map(renderTiles, &FileTile::load);
+		future.waitForFinished();
 
-	for (int i = 0; i < renderTiles.size(); i++) {
-		const FileTile &mt = renderTiles.at(i);
-		QPixmap pm(mt.pixmap());
-		if (pm.isNull())
-			continue;
+		for (int i = 0; i < renderTiles.size(); i++) {
+			const FileTile &mt = renderTiles.at(i);
+			if (mt.pixmap().isNull())
+				continue;
 
-		QPixmapCache::insert(mt.file(), pm);
+			TileCache::insert(TileCache::Key(this, _zoom, mt.xy()),
+			  new QPixmap(mt.pixmap()));
 
-		QPointF tp(mt.xy().x() * ts.width(), mt.xy().y() * ts.height());
-		drawTile(painter, pm, tp);
+			QPointF tp(mt.xy().x() * ts.width(), mt.xy().y() * ts.height());
+			drawTile(painter, &mt.pixmap(), tp);
+		}
 	}
 }
 
-void WMTSMap::drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp)
+void WMTSMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
 {
-	pixmap.setDevicePixelRatio(imageRatio());
-	painter->drawPixmap(tp, pixmap);
+	qreal ratio = _mapRatio > 1.0 ? _mapRatio : _tileRatio;
+
+	if (ratio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(ratio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 QPointF WMTSMap::ll2xy(const Coordinates &c)

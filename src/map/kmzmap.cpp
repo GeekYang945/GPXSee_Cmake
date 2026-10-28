@@ -1,25 +1,10 @@
-/*
-	WARNING: This code uses internal Qt API - the QZipReader class for reading
-	ZIP files - and things may break if Qt changes the API. For Qt5 this is not
-	a problem as we can "see the future" now and there are no changes in all
-	the supported Qt5 versions up to the last one (5.15). In Qt6 the class
-	might change or even disappear in the future, but this is very unlikely
-	as there were no changes for several years and The Qt Company's policy
-	is: "do not invest any resources into any desktop related stuff unless
-	absolutely necessary". There is an issue (QTBUG-3897) since the year 2009 to
-	include the ZIP reader into the public API, which aptly illustrates the
-	effort The Qt Company is willing to make about anything desktop related...
-*/
-
 #include <QFileInfo>
 #include <QXmlStreamReader>
 #include <QBuffer>
 #include <QImageReader>
 #include <QPainter>
-#include <QPixmapCache>
-#include <private/qzipreader_p.h>
+#include "tilecache.h"
 #include "kmzmap.h"
-
 
 #define ZOOM_THRESHOLD 0.9
 
@@ -42,10 +27,10 @@ bool KMZMap::yCmp(const Tile &m1, const Tile &m2)
 }
 
 
-KMZMap::Tile::Tile(const Overlay &overlay, QZipReader &zip)
+KMZMap::Tile::Tile(const Overlay &overlay, const Zip &zip)
   : _overlay(overlay)
 {
-	QByteArray ba(zip.fileData(overlay.path()));
+	QByteArray ba(zip.file(overlay.path()));
 	QBuffer img(&ba);
 	QImageReader ir(&img);
 	_size = ir.size();
@@ -85,7 +70,7 @@ qreal KMZMap::Tile::resolution() const
 	return ds/ps;
 }
 
-bool KMZMap::createTiles(const QList<Overlay> &overlays, QZipReader &zip)
+bool KMZMap::createTiles(const QList<Overlay> &overlays)
 {
 	if (overlays.isEmpty()) {
 		_errorString = "No usable overlay found";
@@ -96,7 +81,7 @@ bool KMZMap::createTiles(const QList<Overlay> &overlays, QZipReader &zip)
 
 	for (int i = 0; i < overlays.size(); i++) {
 		const Overlay &ol = overlays.at(i);
-		Tile tile(ol, zip);
+		Tile tile(ol, _zip);
 		if (tile.isValid())
 			_tiles.append(tile);
 		else {
@@ -272,13 +257,25 @@ void KMZMap::kml(QXmlStreamReader &reader, QList<Overlay> &overlays)
 	}
 }
 
-
 KMZMap::KMZMap(const QString &fileName, QObject *parent)
-  : Map(fileName, parent), _zoom(0), _mapIndex(-1), _zip(0), _mapRatio(1.0),
-  _valid(false)
+  : Map(fileName, parent), _zoom(0), _mapIndex(-1), _file(fileName),
+  _mapRatio(1.0), _valid(false)
 {
-	QZipReader zip(fileName, QIODevice::ReadOnly);
-	QByteArray xml(zip.fileData("doc.kml"));
+	if (!_file.open(QIODevice::ReadOnly)) {
+		_errorString = _file.errorString();
+		return;
+	}
+	_zip = Zip(&_file);
+	if (!_zip.isValid()) {
+		_errorString = _zip.errorString();
+		return;
+	}
+
+	QByteArray xml(_zip.file("doc.kml"));
+	if (xml.isNull()) {
+		_errorString = "doc.kml file not present in ZIP";
+		return;
+	}
 	QXmlStreamReader reader(xml);
 	QList<Overlay> overlays;
 
@@ -286,7 +283,7 @@ KMZMap::KMZMap(const QString &fileName, QObject *parent)
 		if (reader.name() == QLatin1String("kml"))
 			kml(reader, overlays);
 		else
-			reader.raiseError("Not a KMZ file");
+			reader.raiseError("doc.kml: not a KML file");
 	}
 	if (reader.error()) {
 		_errorString = "doc.kml:" + QString::number(reader.lineNumber()) + ": "
@@ -294,17 +291,14 @@ KMZMap::KMZMap(const QString &fileName, QObject *parent)
 		return;
 	}
 
-	if (!createTiles(overlays, zip))
+	if (!createTiles(overlays))
 		return;
 	computeLLBounds();
 	computeZooms();
 
-	_valid = true;
-}
+	_file.close();
 
-KMZMap::~KMZMap()
-{
-	delete _zip;
+	_valid = true;
 }
 
 QRectF KMZMap::bounds()
@@ -427,9 +421,12 @@ void KMZMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 }
 
 void KMZMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(layer);
+	Q_UNUSED(style);
 
 	_projection = in;
 	_mapRatio = hidpi ? deviceRatio : 1.0;
@@ -439,16 +436,15 @@ void KMZMap::load(const Projection &in, const Projection &out,
 
 	computeBounds();
 
-	Q_ASSERT(!_zip);
-	_zip = new QZipReader(path(), QIODevice::ReadOnly);
+	if (!_file.open(QIODevice::ReadOnly))
+		qWarning("%s: %s", qUtf8Printable(_file.fileName()),
+		  qUtf8Printable(_file.errorString()));
 }
 
 void KMZMap::unload()
 {
 	_bounds = QVector<Bounds>();
-
-	delete _zip;
-	_zip = 0;
+	_file.close();
 }
 
 void KMZMap::draw(QPainter *painter, const QRectF &rect, int mapIndex)
@@ -457,30 +453,40 @@ void KMZMap::draw(QPainter *painter, const QRectF &rect, int mapIndex)
 	const QPointF offset = _bounds.at(mapIndex).xy.topLeft();
 	QRectF pr = QRectF(rect.topLeft() - offset, rect.size());
 	QRectF sr(pr.topLeft() * _mapRatio, pr.size() * _mapRatio);
-	QString key(path() + "/" + map.path());
-	QPixmap pm;
+	TileCache::Key key(this, _zoom, mapIndex);
 
 	painter->save();
 	painter->translate(offset);
 	if (map.rotation())
 		painter->rotate(-map.rotation());
 
-	if (QPixmapCache::find(key, &pm)) {
-		pm.setDevicePixelRatio(_mapRatio);
-		painter->drawPixmap(pr.topLeft(), pm, sr);
-	} else {
-		QByteArray ba(_zip->fileData(map.path()));
+	QPixmap *pm = TileCache::object(key);
+	if (!pm) {
+		QByteArray ba(_zip.file(map.path()));
 		QImage img(QImage::fromData(ba));
-		pm = QPixmap::fromImage(img);
-		pm.setDevicePixelRatio(_mapRatio);
-		painter->drawPixmap(pr.topLeft(), pm, sr);
-		QPixmapCache::insert(key, pm);
-	}
+		if (!img.isNull()) {
+			pm = new QPixmap(QPixmap::fromImage(img));
+			drawTile(painter, pm, pr.topLeft(), sr);
+			TileCache::insert(key, pm);
+		}
+	} else
+		drawTile(painter, pm, pr.topLeft(), sr);
 
 	//painter->setPen(Qt::red);
 	//painter->drawRect(map.bounds());
 
 	painter->restore();
+}
+
+void KMZMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &pos, const QRectF &rect) const
+{
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(pos, pm, rect);
+	} else
+		painter->drawPixmap(pos, *pixmap, rect);
 }
 
 Map *KMZMap::create(const QString &path, const Projection &proj, bool *isDir)

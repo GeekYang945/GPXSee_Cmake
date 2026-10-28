@@ -1,9 +1,10 @@
 #ifndef MAPSFORGEMAP_H
 #define MAPSFORGEMAP_H
 
-#include <QtConcurrent>
-#include "mapsforge/mapdata.h"
-#include "mapsforge/rastertile.h"
+#include <QtConcurrentMap>
+#include <QFutureWatcher>
+#include "mapsforge/mapdata_mapsforge.h"
+#include "mapsforge/rastertile_mapsforge.h"
 #include "projection.h"
 #include "transform.h"
 #include "map.h"
@@ -50,6 +51,7 @@ class MapsforgeMap : public Map
 
 public:
 	MapsforgeMap(const QString &fileName, QObject *parent = 0);
+	~MapsforgeMap();
 
 	QRectF bounds() {return _bounds;}
 	RectC llBounds() {return _data.bounds();}
@@ -61,7 +63,7 @@ public:
 	int zoomOut();
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	QPointF ll2xy(const Coordinates &c)
@@ -70,6 +72,10 @@ public:
 	  {return _projection.xy2ll(_transform.img2proj(p));}
 
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
+
+	QStringList styles(int &defaultStyle) const;
+	QStringList layers(const QString &lang, int &defaultLayer) const;
+	bool hillShading() const;
 
 	bool isValid() const {return _data.isValid();}
 	QString errorString() const {return _data.errorString();}
@@ -80,6 +86,12 @@ private slots:
 	void jobFinished(MapsforgeMapJob *job);
 
 private:
+	class StyleList : public QStringList
+	{
+	public:
+		StyleList();
+	};
+
 	QString key(int zoom, const QPoint &xy) const;
 	Transform transform(int zoom) const;
 	void updateTransform();
@@ -88,14 +100,16 @@ private:
 	void removeJob(MapsforgeMapJob *job);
 	void cancelJobs(bool wait);
 
-	Mapsforge::MapData _data;
-	Mapsforge::Style _style;
-	int _zoom;
+	static StyleList &styles();
 
+	Mapsforge::MapData _data;
+	Mapsforge::Style *_style;
+	int _zoom;
 	Projection _projection;
 	Transform _transform;
 	QRectF _bounds;
 	qreal _tileRatio;
+	bool _hillShading;
 
 	QList<MapsforgeMapJob*> _jobs;
 };

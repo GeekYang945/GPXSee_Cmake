@@ -3,13 +3,13 @@
 #include <QSqlField>
 #include <QSqlError>
 #include <QPainter>
-#include <QPixmapCache>
 #include <QImageReader>
 #include <QBuffer>
-#include <QtConcurrent>
+#include <QtConcurrentMap>
+#include "common/util.h"
 #include "osm.h"
 #include "tile.h"
-#include "metatype.h"
+#include "tilecache.h"
 #include "osmdroidmap.h"
 
 
@@ -60,8 +60,6 @@ OsmdroidMap::OsmdroidMap(const QString &fileName, QObject *parent)
 			if (key <= max)
 				_zooms.setMax(i);
 		}
-
-
 	}
 
 	_zoom = _zooms.max();
@@ -72,12 +70,12 @@ OsmdroidMap::OsmdroidMap(const QString &fileName, QObject *parent)
 		quint64 maxz = (((z + 1) << (z + 1)) << (z + 1));
 
 		QSqlQuery query(_db);
-		query.prepare("SELECT min(key), max(key) FROM tiles"
-		  " where key >= :min AND key < :max");
+		if (!query.prepare("SELECT min(key), max(key) FROM tiles"
+		  " where key >= :min AND key < :max"))
+			return;
 		query.bindValue(":min", minz);
 		query.bindValue(":max", maxz);
-		query.exec();
-		if (!query.first())
+		if (!(query.exec() && query.first()))
 			return;
 
 		quint64 min = query.value(0).toLongLong();
@@ -98,12 +96,12 @@ OsmdroidMap::OsmdroidMap(const QString &fileName, QObject *parent)
 		quint64 maxx = (((z << z) + l + 1) << z);
 
 		QSqlQuery query(_db);
-		query.prepare("SELECT min(key), max(key) FROM tiles"
-		  " where key >= :min AND key < :max");
+		if (!query.prepare("SELECT min(key), max(key) FROM tiles"
+		  " where key >= :min AND key < :max"))
+			return;
 		query.bindValue(":min", minx);
 		query.bindValue(":max", maxx);
-		query.exec();
-		if (!query.first())
+		if (!(query.exec() && query.first()))
 			return;
 
 		quint64 min = query.value(0).toLongLong();
@@ -152,13 +150,19 @@ OsmdroidMap::OsmdroidMap(const QString &fileName, QObject *parent)
 }
 
 void OsmdroidMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
-	_db.open();
+
+	if (!_db.open())
+		qWarning("%s: %s", qUtf8Printable(_db.databaseName()),
+		  qUtf8Printable(_db.lastError().text()));
 }
 
 void OsmdroidMap::unload()
@@ -223,14 +227,13 @@ QByteArray OsmdroidMap::tileData(int zoom, const QPoint &tile) const
 	quint64 key = (((z << z) + tile.x()) << z) + tile.y();
 
 	QSqlQuery query(_db);
-	query.prepare("SELECT tile FROM tiles WHERE key=:key");
+	if (!query.prepare("SELECT tile FROM tiles WHERE key=:key"))
+		return QByteArray();
 	query.bindValue(":key", key);
-	query.exec();
+	if (!(query.exec() && query.first()))
+		return QByteArray();
 
-	if (query.first())
-		return query.value(0).toByteArray();
-
-	return QByteArray();
+	return query.value(0).toByteArray();
 }
 
 void OsmdroidMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
@@ -249,17 +252,15 @@ void OsmdroidMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
-			QPixmap pm;
 			QPoint t(tile.x() + i, tile.y() + j);
-			QString key = path() + "-" + QString::number(_zoom) + "_"
-			  + QString::number(t.x()) + "_" + QString::number(t.y());
-
-			if (QPixmapCache::find(key, &pm)) {
+			TileCache::Key key(this, _zoom, t);
+			const QPixmap *pm = TileCache::object(key);
+			if (pm) {
 				QPointF tp(tl.x() + (t.x() - tile.x()) * tileSize(),
 				  tl.y() + (t.y() - tile.y()) * tileSize());
 				drawTile(painter, pm, tp);
 			} else
-				tiles.append(DataTile(t, tileData(_zoom, t), key));
+				tiles.append(DataTile(t, _zoom, tileData(_zoom, t)));
 		}
 	}
 
@@ -268,22 +269,27 @@ void OsmdroidMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	for (int i = 0; i < tiles.size(); i++) {
 		const DataTile &mt = tiles.at(i);
-		QPixmap pm(mt.pixmap());
-		if (pm.isNull())
+		if (mt.pixmap().isNull())
 			continue;
 
-		QPixmapCache::insert(mt.key(), pm);
+		TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+		  new QPixmap(mt.pixmap()));
 
 		QPointF tp(tl.x() + (mt.xy().x() - tile.x()) * tileSize(),
 		  tl.y() + (mt.xy().y() - tile.y()) * tileSize());
-		drawTile(painter, pm, tp);
+		drawTile(painter, &mt.pixmap(), tp);
 	}
 }
 
-void OsmdroidMap::drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp)
+void OsmdroidMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
 {
-	pixmap.setDevicePixelRatio(_mapRatio);
-	painter->drawPixmap(tp, pixmap);
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 QPointF OsmdroidMap::ll2xy(const Coordinates &c)

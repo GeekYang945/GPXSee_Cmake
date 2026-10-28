@@ -22,7 +22,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -38,7 +38,9 @@ private:
 	bool readGeoRef(QDataStream &stream);
 	bool readIndex(QDataStream &stream);
 	bool readPalette(QDataStream &stream);
-	QPixmap tile(int x, int y);
+	QPixmap *tile(const QPoint &xy);
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &tp) const;
 
 	QFile _file;
 	QString _name;

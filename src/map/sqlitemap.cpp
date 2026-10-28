@@ -3,15 +3,16 @@
 #include <QSqlField>
 #include <QSqlError>
 #include <QPainter>
-#include <QPixmapCache>
 #include <QImageReader>
 #include <QBuffer>
-#include <QtConcurrent>
+#include <QtConcurrentMap>
+#include "common/util.h"
 #include "osm.h"
 #include "tile.h"
-#include "metatype.h"
+#include "tilecache.h"
 #include "sqlitemap.h"
 
+using namespace OSM;
 
 SqliteMap::SqliteMap(const QString &fileName, QObject *parent)
   : Map(fileName, parent), _mapRatio(1.0), _valid(false)
@@ -67,13 +68,13 @@ SqliteMap::SqliteMap(const QString &fileName, QObject *parent)
 		int minY = qMin((1<<z) - 1, qMax(0, query.value(1).toInt()));
 		int maxX = qMin((1<<z) - 1, qMax(0, query.value(2).toInt())) + 1;
 		int maxY = qMin((1<<z) - 1, qMax(0, query.value(3).toInt())) + 1;
-		Coordinates tl(OSM::tile2ll(QPoint(minX, minY), z));
+		Coordinates tl(tile2ll(QPoint(minX, minY), z));
 		tl.rlat() = -tl.lat();
-		Coordinates br(OSM::tile2ll(QPoint(maxX, maxY), z));
+		Coordinates br(tile2ll(QPoint(maxX, maxY), z));
 		br.rlat() = -br.lat();
 		// Workaround of broken zoom levels 0 and 1 due to numerical instability
-		tl.rlat() = qMin(tl.lat(), OSM::BOUNDS.top());
-		br.rlat() = qMax(br.lat(), OSM::BOUNDS.bottom());
+		tl.rlat() = qMin(tl.lat(), BOUNDS.top());
+		br.rlat() = qMax(br.lat(), BOUNDS.bottom());
 		_bounds = RectC(tl, br);
 	}
 
@@ -100,13 +101,20 @@ SqliteMap::SqliteMap(const QString &fileName, QObject *parent)
 }
 
 void SqliteMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
-	_db.open();
+	_factor = zoom2scale(_zoom, _tileSize) * _mapRatio;
+
+	if (!_db.open())
+		qWarning("%s: %s", qUtf8Printable(_db.databaseName()),
+		  qUtf8Printable(_db.lastError().text()));
 }
 
 void SqliteMap::unload()
@@ -117,6 +125,11 @@ void SqliteMap::unload()
 QRectF SqliteMap::bounds()
 {
 	return QRectF(ll2xy(_bounds.topLeft()), ll2xy(_bounds.bottomRight()));
+}
+
+qreal SqliteMap::resolution(const QRectF &rect)
+{
+	return OSM::resolution(rect.center(), _zoom, tileSize());
 }
 
 int SqliteMap::limitZoom(int zoom) const
@@ -134,29 +147,36 @@ int SqliteMap::zoomFit(const QSize &size, const RectC &rect)
 	if (!rect.isValid())
 		_zoom = _zooms.max();
 	else {
-		QRectF tbr(OSM::ll2m(rect.topLeft()), OSM::ll2m(rect.bottomRight()));
+		QRectF tbr(ll2m(rect.topLeft()), ll2m(rect.bottomRight()));
 		QPointF sc(tbr.width() / size.width(), tbr.height() / size.height());
-		_zoom = limitZoom(OSM::scale2zoom(qMax(sc.x(), -sc.y()) / _mapRatio,
+		_zoom = limitZoom(scale2zoom(qMax(sc.x(), -sc.y()) / _mapRatio,
 		  _tileSize));
 	}
+
+	_factor = zoom2scale(_zoom, _tileSize) * _mapRatio;
 
 	return _zoom;
 }
 
-qreal SqliteMap::resolution(const QRectF &rect)
+void SqliteMap::setZoom(int zoom)
 {
-	return OSM::resolution(rect.center(), _zoom, tileSize());
+	_zoom = zoom;
+	_factor = zoom2scale(_zoom, _tileSize) * _mapRatio;
 }
 
 int SqliteMap::zoomIn()
 {
 	_zoom = qMin(_zoom + 1, _zooms.max());
+	_factor = zoom2scale(_zoom, _tileSize) * _mapRatio;
+
 	return _zoom;
 }
 
 int SqliteMap::zoomOut()
 {
 	_zoom = qMax(_zoom - 1, _zooms.min());
+	_factor = zoom2scale(_zoom, _tileSize) * _mapRatio;
+
 	return _zoom;
 }
 
@@ -168,26 +188,23 @@ qreal SqliteMap::tileSize() const
 QByteArray SqliteMap::tileData(int zoom, const QPoint &tile) const
 {
 	QSqlQuery query(_db);
-	query.prepare("SELECT image FROM tiles WHERE z=:zoom AND x=:x AND y=:y");
+	if (!query.prepare("SELECT image FROM tiles WHERE z=:zoom AND x=:x AND y=:y"))
+		return QByteArray();
 	query.bindValue(":zoom", 17 - zoom);
 	query.bindValue(":x", tile.x());
 	query.bindValue(":y", tile.y());
-	query.exec();
+	if (!(query.exec() && query.first()))
+		return QByteArray();
 
-	if (query.first())
-		return query.value(0).toByteArray();
-
-	return QByteArray();
+	return query.value(0).toByteArray();
 }
 
 void SqliteMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 {
 	Q_UNUSED(flags);
-	qreal scale = OSM::zoom2scale(_zoom, _tileSize);
-	QPoint tile = OSM::mercator2tile(QPointF(rect.topLeft().x() * scale,
-	  -rect.topLeft().y() * scale) * _mapRatio, _zoom);
-	QPointF tlm(OSM::tile2mercator(tile, _zoom));
-	QPointF tl(QPointF(tlm.x() / scale, tlm.y() / scale) / _mapRatio);
+	QPoint tile = mercator2tile(QPointF(rect.topLeft().x(),
+	  -rect.topLeft().y()) * _factor, _zoom);
+	QPointF tl(tile2mercator(tile, _zoom) / _factor);
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	int width = ceil(s.width() / tileSize());
 	int height = ceil(s.height() / tileSize());
@@ -196,17 +213,15 @@ void SqliteMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
-			QPixmap pm;
 			QPoint t(tile.x() + i, tile.y() + j);
-			QString key = path() + "-" + QString::number(_zoom) + "_"
-			  + QString::number(t.x()) + "_" + QString::number(t.y());
-
-			if (QPixmapCache::find(key, &pm)) {
+			TileCache::Key key(this, _zoom, t);
+			const QPixmap *pm = TileCache::object(key);
+			if (pm) {
 				QPointF tp(tl.x() + (t.x() - tile.x()) * tileSize(),
 				  tl.y() + (t.y() - tile.y()) * tileSize());
 				drawTile(painter, pm, tp);
 			} else
-				tiles.append(DataTile(t, tileData(_zoom, t), key));
+				tiles.append(DataTile(t, _zoom, tileData(_zoom, t)));
 		}
 	}
 
@@ -215,35 +230,38 @@ void SqliteMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 
 	for (int i = 0; i < tiles.size(); i++) {
 		const DataTile &mt = tiles.at(i);
-		QPixmap pm(mt.pixmap());
-		if (pm.isNull())
+		if (mt.pixmap().isNull())
 			continue;
 
-		QPixmapCache::insert(mt.key(), pm);
+		TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+		  new QPixmap(mt.pixmap()));
 
 		QPointF tp(tl.x() + (mt.xy().x() - tile.x()) * tileSize(),
 		  tl.y() + (mt.xy().y() - tile.y()) * tileSize());
-		drawTile(painter, pm, tp);
+		drawTile(painter, &mt.pixmap(), tp);
 	}
 }
 
-void SqliteMap::drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp)
+void SqliteMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
 {
-	pixmap.setDevicePixelRatio(_mapRatio);
-	painter->drawPixmap(tp, pixmap);
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 QPointF SqliteMap::ll2xy(const Coordinates &c)
 {
-	qreal scale = OSM::zoom2scale(_zoom, _tileSize);
-	QPointF m = OSM::ll2m(c);
-	return QPointF(m.x() / scale, m.y() / -scale) / _mapRatio;
+	QPointF m = ll2m(c);
+	return QPointF(m.x(), -m.y()) / _factor;
 }
 
 Coordinates SqliteMap::xy2ll(const QPointF &p)
 {
-	qreal scale = OSM::zoom2scale(_zoom, _tileSize);
-	return OSM::m2ll(QPointF(p.x() * scale, -p.y() * scale) * _mapRatio);
+	return m2ll(QPointF(p.x(), -p.y()) * _factor);
 }
 
 Map *SqliteMap::create(const QString &path, const Projection &proj, bool *isDir)

@@ -24,7 +24,11 @@ GraphItem::GraphItem(const Graph &graph, GraphType type, int width,
 void GraphItem::updateShape()
 {
 	QPainterPathStroker s;
+#ifdef Q_OS_ANDROID
+	s.setWidth(_pen.width() + 10);
+#else // Q_OS_ANDROID
 	s.setWidth(_pen.width() + 1);
+#endif // Q_OS_ANDROID
 	_shape = s.createStroke(_path);
 }
 
@@ -266,8 +270,8 @@ void GraphItem::updatePath()
 			  * _sy);
 
 			_path.moveTo(p1);
-			for (int i = 1; i < segment.size(); i++) {
-				QPointF p2(segment.at(i).x(_type) * _sx, -segment.at(i).y()
+			for (int j = 1; j < segment.size(); j++) {
+				QPointF p2(segment.at(j).x(_type) * _sx, -segment.at(j).y()
 				  * _sy);
 				QPointF diff(p1 - p2);
 				if (qAbs(diff.x()) >= 1.0 || qAbs(diff.y()) >= 1.0) {
@@ -382,9 +386,10 @@ void GraphItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 
 void GraphItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-	GraphicsScene *gs = dynamic_cast<GraphicsScene *>(scene());
+	const GraphicsScene *gs = dynamic_cast<GraphicsScene*>(scene());
 	if (gs)
 		Popup::show(event->screenPos(), info(gs->showExtendedInfo()),
 		  event->widget());
-	GraphicsItem::mousePressEvent(event);
+
+	event->accept();
 }

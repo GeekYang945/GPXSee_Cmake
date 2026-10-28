@@ -32,15 +32,8 @@
 	  ? QPageSize::PageSizeId::Letter \
 	  : QPageSize::PageSizeId::A4)
 
-#define ALL_LAYERS (int)(MapView::Layer::Raster | MapView::Layer::Vector)
-
-#ifdef Q_OS_ANDROID
-#define PIXMAP_CACHE 384
-#define DEM_CACHE    128
-#else // Q_OS_ANDROID
 #define PIXMAP_CACHE 512
 #define DEM_CACHE    256
-#endif // Q_OS_ANDROID
 
 
 static QString defaultPlugin()
@@ -147,7 +140,6 @@ SETTING(showToolbars,        "toolbar",                true                   );
 SETTING(activeMap,           "map",                    "Open Street Map"      );
 SETTING(showMap,             "show",                   true                   );
 SETTING(cursorCoordinates,   "coordinates",            false                  );
-SETTING(layers,              "layers",                 ALL_LAYERS             );
 
 /* Graph */
 SETTING(showGraphs,          "show",                   true                   );
@@ -170,6 +162,7 @@ SETTING(routes,              "routes",                 true                   );
 SETTING(waypoints,           "waypoints",              true                   );
 SETTING(areas,               "areas",                  true                   );
 SETTING(routeWaypoints,      "routeWaypoints",         true                   );
+SETTING(trackWaypoints,      "trackWaypoints",         false                  );
 SETTING(waypointIcons,       "waypointIcons",          false                  );
 SETTING(waypointLabels,      "waypointLabels",         true                   );
 SETTING(pathTicks,           "pathTicks",              false                  );
@@ -177,6 +170,7 @@ SETTING(legend,              "legend",                 false                  );
 SETTING(positionMarkers,     "positionMarkers",        true                   );
 SETTING(markerInfo,          "markerInfo",             MarkerInfoItem::None   );
 SETTING(useStyles,           "styles",                 true                   );
+SETTING(videos,              "videos",                 true                   );
 
 /* DEM */
 SETTING(drawHillShading,     "hillshading",            true                   );
@@ -250,12 +244,12 @@ SETTING(demURL,              "demURL",                 DEM_TILES_URL          );
 SETTING(demAuthentication,   "demAuthentication",      false                  );
 SETTING(demUsername,         "demUsername",            ""                     );
 SETTING(demPassword,         "demPassword",            ""                     );
-SETTING(hillshadingAlpha,    "hillshadingAlpha",       102                    );
-SETTING(hillshadingLightening,"hillshadingLightening", 0.2                    );
-SETTING(hillshadingBlur,     "hillshadingBlur",        3                      );
+SETTING(hillshadingAlpha,    "hillshadingAlpha",       85                     );
+SETTING(hillshadingLightening,"hillshadingLightening", 0.25                   );
+SETTING(hillshadingBlur,     "hillshadingBlur",        2                      );
 SETTING(hillshadingAzimuth,  "hillshadingAzimuth",     315                    );
 SETTING(hillshadingAltitude, "hillshadingAltitude",    45                     );
-SETTING(hillshadingZFactor,  "hillshadingZFactor",     0.6                    );
+SETTING(hillshadingZFactor,  "hillshadingZFactor",     0.8                    );
 SETTING(useOpenGL,           "useOpenGL",              false                  );
 SETTING(enableHTTP2,         "enableHTTP2",            true                   );
 SETTING(pixmapCache,         "pixmapCache",            PIXMAP_CACHE           );
@@ -273,6 +267,9 @@ SETTING(sliderColor,         "sliderColor",            QColor(Qt::red)        );
 SETTING(outputProjection,    "outputProjection",       3856                   );
 SETTING(inputProjection,     "inputProjection",        4326                   );
 SETTING(hidpiMap,            "HiDPIMap",               true                   );
+SETTING(pathsDetail,         "pathsDetail",            1                      );
+SETTING(pointsDetail,        "pointsDetail",           1                      );
+SETTING(hillshadingDetail,   "hillshadingDetail",      2                      );
 SETTING(poiPath,             "poiPath",                ""                     );
 SETTING(mapsPath,            "mapsPath",               ""                     );
 SETTING(dataPath,            "dataPath",               ""                     );
@@ -283,7 +280,5 @@ const Settings::SettingMap Settings::positionPluginParameters
 const Settings::SettingList Settings::disabledPoiFiles
   = Settings::SettingList("disabled", "file");
 
-#ifndef Q_OS_ANDROID
 const Settings::SettingList Settings::recentDataFiles
   = Settings::SettingList("recent", "file");
-#endif // Q_OS_ANDROID

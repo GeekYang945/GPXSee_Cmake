@@ -1,6 +1,7 @@
 ﻿!include "MUI2.nsh"
 !include "x64.nsh"
 !include "WinVer.nsh"
+!include "FileFunc.nsh"
 
 
 ; Macros
@@ -33,6 +34,8 @@
 ; Translations
 !macro LOCALIZATION LANG CODE
   Section "${LANG}"
+    SetOutPath $INSTDIR
+
     IfFileExists "$INSTDIR\translations" +2 0
       CreateDirectory "$INSTDIR\translations" 
     File /oname=translations\gpxsee_${CODE}.qm translations\gpxsee_${CODE}.qm
@@ -44,17 +47,31 @@
 
 ;--------------------------------
 
+
 Unicode true
 
 ; The name of the installer
 Name "GPXSee"
 ; Program version
-!define VERSION "13.44"
+!define VERSION "16.20"
+
+; CPU architecture
+!ifdef ARM64
+!define ARCH "arm64"
+!else
+!define ARCH "x64"
+!endif
 
 ; The file to write
-OutFile "GPXSee-${VERSION}_x64.exe"
+OutFile "GPXSee-${VERSION}_${ARCH}.exe"
 ; Compression method
 SetCompressor /SOLID lzma
+
+; Code signing
+!ifdef CERT
+!finalize 'signtool sign /f ${CERT} /p ${PWD} /tr ${TIMESTAMP} /td sha256 /fd sha256 "%1"' = 0
+!uninstfinalize 'signtool sign /f ${CERT} /p ${PWD} /tr ${TIMESTAMP} /td sha256 /fd sha256 "%1"' = 0
+!endif
 
 ; Required execution level
 RequestExecutionLevel admin
@@ -70,8 +87,8 @@ VIProductVersion "${VERSION}.0.0"
 VIAddVersionKey "ProductVersion" ${VERSION}
 VIAddVersionKey "FileVersion" "${VERSION}.0.0"
 VIAddVersionKey "ProductName" "GPXSee"
-VIAddVersionKey "LegalCopyright" "Copyright (c) 2015-2025 Martin Tůma"
-VIAddVersionKey "FileDescription" "GPXSee installer (x64)"
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2015-2026 Martin Tůma"
+VIAddVersionKey "FileDescription" "GPXSee installer (${ARCH})"
 
 ; Registry key to check for directory (so if you install again, it will
 ; overwrite the old one automatically)
@@ -107,40 +124,109 @@ Var StartMenuFolder
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
-!ifdef QT6
   ${IfNot} ${AtLeastWin10}
     MessageBox MB_OK "GPXSee can only be installed on Windows 10 or later."
     Abort
   ${EndIf}
-!else
-  ${IfNot} ${AtLeastWin7}
-    MessageBox MB_OK "GPXSee can only be installed on Windows 7 or later."
-    Abort
-  ${EndIf}
-!endif
 
+!ifdef ARM64
+  ${If} ${IsNativeARM64}
+!else
   ${If} ${RunningX64}
+!endif
     SetRegView 64
   ${Else}
-    MessageBox MB_OK "The 64b version of GPXSee can not be run on 32b systems."
+    MessageBox MB_OK "The ${ARCH} version of GPXSee can not be run on this system."
     Abort
   ${EndIf}
 FunctionEnd
 
 ; The stuff to install
 Section "GPXSee" SEC_APP
-
   SectionIn RO
-
-  ; Set output path to the installation directory
   SetOutPath $INSTDIR
 
   ; Put the files there
   File "gpxsee.exe"
   File /r "maps"
+  File /r "style"
   File /r "CRS"
   File /r "symbols"
+SectionEnd
 
+Section "Qt" SEC_QT
+  SectionIn RO
+  SetOutPath $INSTDIR
+
+  File "Qt6Concurrent.dll"
+  File "Qt6Core.dll"
+  File "Qt6Gui.dll"
+  File "Qt6Network.dll"
+  File "Qt6OpenGL.dll"
+  File "Qt6OpenGLWidgets.dll"
+  File "Qt6PrintSupport.dll"
+  File "Qt6Sql.dll"
+  File "Qt6Svg.dll"
+  File "Qt6Widgets.dll"
+  File "Qt6Positioning.dll"
+  File "Qt6SerialPort.dll"
+  File "Qt6Multimedia.dll"
+  File "Qt6MultimediaWidgets.dll"
+  File /r "generic"
+  File /r "iconengines"
+  File /r "imageformats"
+  File /r "multimedia"
+  File /r "networkinformation"
+  File /r "platforms"
+  File /r "position"
+  File /r "sqldrivers"
+  File /r "styles"
+  File /r "tls"
+SectionEnd
+
+Section "FFmpeg" SEC_FFMPEG
+  SectionIn RO
+  SetOutPath $INSTDIR
+
+  File avcodec-*.dll
+  File avformat-*.dll
+  File avutil-*.dll
+  File swresample-*.dll
+  File swscale-*.dll
+SectionEnd
+
+Section "MSVC runtime" SEC_MSVC
+  SectionIn RO
+  SetOutPath $TEMP
+
+  File "vc_redist.${ARCH}.exe"
+  ExecWait '"$TEMP\vc_redist.${ARCH}.exe" /install /quiet /norestart'
+SectionEnd
+
+SectionGroup "Localization" SEC_LOCALIZATION
+  !insertmacro LOCALIZATION "Catalan" "ca"
+  !insertmacro LOCALIZATION "Chinese (Simplified)" "zh_CN"
+  !insertmacro LOCALIZATION "Czech" "cs"
+  !insertmacro LOCALIZATION "Danish" "da"
+  !insertmacro LOCALIZATION "English" "en"
+  !insertmacro LOCALIZATION "Esperanto" "eo"
+  !insertmacro LOCALIZATION "Finnish" "fi"
+  !insertmacro LOCALIZATION "French" "fr"
+  !insertmacro LOCALIZATION "German" "de"
+  !insertmacro LOCALIZATION "Hungarian" "hu"
+  !insertmacro LOCALIZATION "Italian" "it"
+  !insertmacro LOCALIZATION "Korean" "ko"
+  !insertmacro LOCALIZATION "Norwegian" "nb"
+  !insertmacro LOCALIZATION "Polish" "pl"
+  !insertmacro LOCALIZATION "Portuguese (Brazil)" "pt_BR"
+  !insertmacro LOCALIZATION "Russian" "ru"
+  !insertmacro LOCALIZATION "Spanish" "es"
+  !insertmacro LOCALIZATION "Swedish" "sv"
+  !insertmacro LOCALIZATION "Turkish" "tr"
+  !insertmacro LOCALIZATION "Ukrainian" "uk"
+SectionGroupEnd
+
+Section "-PostInstall"
   ; Create the uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
   
@@ -157,7 +243,7 @@ Section "GPXSee" SEC_APP
   WriteRegStr HKLM SOFTWARE\GPXSee "Install_Dir" "$INSTDIR"
 
   ; Write the uninstall keys for Windows
-  WriteRegStr HKLM "${REGENTRY}" "DisplayName" "GPXSee (x64)"
+  WriteRegStr HKLM "${REGENTRY}" "DisplayName" "GPXSee (${ARCH})"
   WriteRegStr HKLM "${REGENTRY}" "Publisher" "Martin Tůma"
   WriteRegStr HKLM "${REGENTRY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "${REGENTRY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
@@ -167,6 +253,8 @@ Section "GPXSee" SEC_APP
   WriteRegStr HKLM "${REGENTRY}" "URLInfoAbout" "https://www.gpxsee.org"
   WriteRegDWORD HKLM "${REGENTRY}" "NoModify" 1
   WriteRegDWORD HKLM "${REGENTRY}" "NoRepair" 1
+  ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
+  WriteRegDWORD HKLM "${REGENTRY}" "EstimatedSize" $0
 
   ; Associate file formats
   DetailPrint "Associating file types..."
@@ -178,6 +266,7 @@ Section "GPXSee" SEC_APP
   !insertmacro FILE_ASSOCIATION_ADD "gpi" "Garmin POI File" 6
   !insertmacro FILE_ASSOCIATION_ADD "sml" "Suunto Markup Language" 7
   !insertmacro FILE_ASSOCIATION_ADD "img" "Garmin IMG Map" 8
+  !insertmacro FILE_ASSOCIATION_ADD "csm" "Garmin IMG Map" 8
   !insertmacro FILE_ASSOCIATION_ADD "jnx" "Garmin JNX Map" 9
   !insertmacro FILE_ASSOCIATION_ADD "kap" "BSB Nautical Chart" 10
   !insertmacro FILE_ASSOCIATION_ADD "gpx" "GPS Exchange Format" 11
@@ -206,13 +295,17 @@ Section "GPXSee" SEC_APP
   !insertmacro FILE_ASSOCIATION_ADD "031" "IHO S-57 Electronic Navigation Catalogue" 28
   !insertmacro FILE_ASSOCIATION_ADD "vtk" "Velocitek VTK File" 29
   !insertmacro FILE_ASSOCIATION_ADD "vkx" "Vakaros VKX File" 30
-  !insertmacro FILE_ASSOCIATION_ADD "kml" "Keyhole Markup Language" 31
-  !insertmacro FILE_ASSOCIATION_ADD "kmz" "KML geographic compressed data" 31
-  !insertmacro FILE_ASSOCIATION_ADD "fit" "Flexible and Interoperable Data Transfer" 32
-  !insertmacro FILE_ASSOCIATION_ADD "igc" "Flight Recorder Data Format" 33
-  !insertmacro FILE_ASSOCIATION_ADD "nmea" "NMEA 0183 Data" 34
-  !insertmacro FILE_ASSOCIATION_ADD "plt" "OziExplorer Track File" 35
-  !insertmacro FILE_ASSOCIATION_ADD "rte" "OziExplorer Route File" 36
+  !insertmacro FILE_ASSOCIATION_ADD "csa" "COROS IMG Atlas" 31
+  !insertmacro FILE_ASSOCIATION_ADD "pmtiles" "PMTiles Map File" 32
+  !insertmacro FILE_ASSOCIATION_ADD "t" "PMTiles Map File" 32
+  !insertmacro FILE_ASSOCIATION_ADD "kml" "Keyhole Markup Language" 33
+  !insertmacro FILE_ASSOCIATION_ADD "kmz" "KML geographic compressed data" 33
+  !insertmacro FILE_ASSOCIATION_ADD "pma" "COROS PMTiles Atlas" 34
+  !insertmacro FILE_ASSOCIATION_ADD "fit" "Flexible and Interoperable Data Transfer" 35
+  !insertmacro FILE_ASSOCIATION_ADD "igc" "Flight Recorder Data Format" 36
+  !insertmacro FILE_ASSOCIATION_ADD "nmea" "NMEA 0183 Data" 37
+  !insertmacro FILE_ASSOCIATION_ADD "plt" "OziExplorer Track File" 38
+  !insertmacro FILE_ASSOCIATION_ADD "rte" "OziExplorer Route File" 39
 
   !insertmacro URI_ASSOCIATION_ADD "geo"
 
@@ -239,6 +332,7 @@ Section "GPXSee" SEC_APP
   WriteRegStr HKCR ".jpg\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".jpeg\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".img\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".csm\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".jnx\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".kap\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".map\OpenWithList" "GPXSee.exe" ""
@@ -270,124 +364,22 @@ Section "GPXSee" SEC_APP
   WriteRegStr HKCR ".txt\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".vtk\OpenWithList" "GPXSee.exe" ""
   WriteRegStr HKCR ".vkx\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".csa\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".pmtiles\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".t\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".pma\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".mp4\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".mov\OpenWithList" "GPXSee.exe" ""
+  WriteRegStr HKCR ".srt\OpenWithList" "GPXSee.exe" ""
 
   System::Call 'shell32.dll::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)'
-
 SectionEnd
-
-Section "Qt framework" SEC_QT
-
-  SectionIn RO
-
-!ifdef QT6
-  File "Qt6Concurrent.dll"
-  File "Qt6Core.dll"
-  File "Qt6Gui.dll"
-  File "Qt6Network.dll"
-  File "Qt6OpenGL.dll"
-  File "Qt6OpenGLWidgets.dll"
-  File "Qt6PrintSupport.dll"
-  File "Qt6Sql.dll"
-  File "Qt6Svg.dll"
-  File "Qt6Widgets.dll"
-  File "Qt6Positioning.dll"
-  File "Qt6SerialPort.dll"
-  File /r "tls"
-!else
-  File "Qt5Core.dll"
-  File "Qt5Gui.dll"
-  File "Qt5Widgets.dll"
-  File "Qt5PrintSupport.dll"
-  File "Qt5Network.dll"
-  File "Qt5Sql.dll"
-  File "Qt5Svg.dll"
-  File "Qt5Concurrent.dll"
-  File "Qt5Positioning.dll"
-  File "Qt5SerialPort.dll" 
-  File /r "printsupport"
-!endif
-  File /r "platforms"
-  File /r "iconengines"
-  File /r "imageformats"
-  File /r "styles"
-  File /r "sqldrivers"
-  File /r "position"
-
-SectionEnd
-
-Section "MSVC runtime" SEC_MSVC
-
-  SectionIn RO
-
-  SetOutPath $TEMP
-  File "vc_redist.x64.exe"
-  ExecWait '"$TEMP\vc_redist.x64.exe" /install /quiet /norestart'
-  SetOutPath $INSTDIR
-
-SectionEnd
-
-!ifdef ICU
-Section "ICU" SEC_ICU
-
-  SectionIn RO
-
-  File "icudt*.dll"
-  File "icuin*.dll"
-  File "icuuc*.dll"
-
-SectionEnd
-!endif
-
-!ifdef OPENSSL
-Section "OpenSSL" SEC_OPENSSL
-
-  SectionIn RO
-
-  File "libcrypto-*-x64.dll"
-  File "libssl-*-x64.dll"
-
-SectionEnd
-!endif
-
-!ifdef ANGLE
-Section "ANGLE" SEC_ANGLE
-
-  File "libGLESv2.dll"
-  File "libEGL.dll"
-  File "D3DCompiler_47.dll"
-
-SectionEnd
-!endif
-
-SectionGroup "Localization" SEC_LOCALIZATION
-  !insertmacro LOCALIZATION "Catalan" "ca"
-  !insertmacro LOCALIZATION "Chinese (Simplified)" "zh_CN"
-  !insertmacro LOCALIZATION "Czech" "cs"
-  !insertmacro LOCALIZATION "Danish" "da"
-  !insertmacro LOCALIZATION "English" "en"
-  !insertmacro LOCALIZATION "Esperanto" "eo"
-  !insertmacro LOCALIZATION "Finnish" "fi"
-  !insertmacro LOCALIZATION "French" "fr"
-  !insertmacro LOCALIZATION "German" "de"
-  !insertmacro LOCALIZATION "Hungarian" "hu"
-  !insertmacro LOCALIZATION "Italian" "it"
-  !insertmacro LOCALIZATION "Korean" "ko"
-  !insertmacro LOCALIZATION "Norwegian" "nb"
-  !insertmacro LOCALIZATION "Polish" "pl"
-  !insertmacro LOCALIZATION "Portuguese (Brazil)" "pt_BR"
-  !insertmacro LOCALIZATION "Russian" "ru"
-  !insertmacro LOCALIZATION "Spanish" "es"
-  !insertmacro LOCALIZATION "Swedish" "sv"
-  !insertmacro LOCALIZATION "Turkish" "tr"
-  !insertmacro LOCALIZATION "Ukrainian" "uk"
-SectionGroupEnd
 
 ;--------------------------------
 
 ; Uninstaller
 
 Section "Uninstall"
-
   ; Remove registry keys
   SetRegView 64
   DeleteRegKey HKLM "${REGENTRY}"
@@ -419,6 +411,7 @@ Section "Uninstall"
   !insertmacro FILE_ASSOCIATION_REMOVE "gpi"
   !insertmacro FILE_ASSOCIATION_REMOVE "sml"
   !insertmacro FILE_ASSOCIATION_REMOVE "img"
+  !insertmacro FILE_ASSOCIATION_REMOVE "csm"
   !insertmacro FILE_ASSOCIATION_REMOVE "jnx"
   !insertmacro FILE_ASSOCIATION_REMOVE "kap"
   !insertmacro FILE_ASSOCIATION_REMOVE "map"
@@ -446,6 +439,10 @@ Section "Uninstall"
   !insertmacro FILE_ASSOCIATION_REMOVE "031"
   !insertmacro FILE_ASSOCIATION_REMOVE "vtk"
   !insertmacro FILE_ASSOCIATION_REMOVE "vkx"
+  !insertmacro FILE_ASSOCIATION_REMOVE "csa"
+  !insertmacro FILE_ASSOCIATION_REMOVE "pmtiles"
+  !insertmacro FILE_ASSOCIATION_REMOVE "t"
+  !insertmacro FILE_ASSOCIATION_REMOVE "pma"
 
   !insertmacro URI_ASSOCIATION_REMOVE "geo"
 
@@ -471,6 +468,7 @@ Section "Uninstall"
   DeleteRegValue HKCR ".jpg\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".jpeg\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".img\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".csm\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".jnx\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".kap\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".map\OpenWithList" "GPXSee.exe"
@@ -502,10 +500,16 @@ Section "Uninstall"
   DeleteRegValue HKCR ".txt\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".vtk\OpenWithList" "GPXSee.exe"
   DeleteRegValue HKCR ".vkx\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".csa\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".pmtiles\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".t\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".pma\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".mp4\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".mov\OpenWithList" "GPXSee.exe"
+  DeleteRegValue HKCR ".srt\OpenWithList" "GPXSee.exe"
   DeleteRegKey HKCR "Applications\GPXSee.exe"   
   
   System::Call 'shell32.dll::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)'
-
 SectionEnd
 
 ;-------------------------------
@@ -513,27 +517,12 @@ SectionEnd
 ; Descriptions
 
 ; Language strings
-!ifdef QT6
 LangString DESC_QT ${LANG_ENGLISH} \
-  "Qt6 cross-platform application framework."
-!else
-LangString DESC_QT ${LANG_ENGLISH} \
-  "Qt5 cross-platform application framework."
-!endif
+  "Qt cross-platform application framework."
+LangString DESC_FFMPEG ${LANG_ENGLISH} \
+  "FFmpeg multimedia framework."
 LangString DESC_MSVC ${LANG_ENGLISH} \
   "Microsoft Visual C++ runtime. If already installed, will be skipped."
-!ifdef ICU
-LangString DESC_ICU ${LANG_ENGLISH} \
-  "ICU library. Required for character set/encoding conversions."
-!endif
-!ifdef OPENSSL
-LangString DESC_OPENSSL ${LANG_ENGLISH} \
-  "OpenSSL library. Qt SSL/TLS backend for HTTPS."
-!endif
-!ifdef ANGLE
-LangString DESC_ANGLE ${LANG_ENGLISH} \
-  "ANGLE (OpenGL via Direct3D). Enables OpenGL on systems without native OpenGL drivers."
-!endif
 LangString DESC_APP ${LANG_ENGLISH} \
   "GPXSee application"
 LangString DESC_LOCALIZATION ${LANG_ENGLISH} \
@@ -541,17 +530,9 @@ LangString DESC_LOCALIZATION ${LANG_ENGLISH} \
 
 ; Assign language strings to sections
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_MSVC} $(DESC_MSVC)
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_QT} $(DESC_QT)
-!ifdef ICU
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_ICU} $(DESC_ICU)
-!endif
-!ifdef OPENSSL
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_OPENSSL} $(DESC_OPENSSL)
-!endif
-!ifdef ANGLE
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_ANGLE} $(DESC_ANGLE)
-!endif
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_MSVC} $(DESC_MSVC) 
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_FFMPEG} $(DESC_FFMPEG)
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_APP} $(DESC_APP)
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_LOCALIZATION} $(DESC_LOCALIZATION)
 !insertmacro MUI_FUNCTION_DESCRIPTION_END

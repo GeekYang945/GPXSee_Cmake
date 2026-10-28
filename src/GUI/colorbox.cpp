@@ -1,18 +1,30 @@
 #include <QStylePainter>
-#include <QStyleOptionComboBox>
-#include <QMouseEvent>
+#include <QStyleOptionButton>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QPainterPath>
+#include "macos.h"
 #include "colorbox.h"
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 1, 0)
+static bool useButtonCommand(const QStyle *style)
+{
+	static const QStringList list = {"breeze", "oxygen", "windowsvista"};
+	return list.contains(style->name().toLower());
+}
+#else // QT6
+#define useButtonCommand(style) true
+#endif // QT6
 
-ColorBox::ColorBox(QWidget *parent) : QWidget(parent)
+ColorBox::ColorBox(QWidget *parent) : QAbstractButton(parent)
 {
 	_color = Qt::red;
 	_alpha = true;
 
 	setSizePolicy(QSizePolicy::QSizePolicy::Minimum, QSizePolicy::Fixed);
 	setAttribute(Qt::WA_Hover);
+
+	connect(this, &ColorBox::clicked, this, &ColorBox::showColorDialog);
 }
 
 QSize ColorBox::sizeHint() const
@@ -30,46 +42,49 @@ void ColorBox::paintEvent(QPaintEvent *event)
 {
 	Q_UNUSED(event);
 
-    QStylePainter painter(this);
+	if (MacOS::match(style())) {
+		QColor c(palette().window().color());
+		QPen pen(c.darker(110), 1);
 
-    QStyleOptionComboBox option;
-	option.initFrom(this);
+		QPainter p(this);
+		p.setRenderHint(QPainter::Antialiasing);
+		p.setPen(pen);
+		p.setBrush(isDown() ? QBrush(_color.darker(110)) : QBrush(_color));
+		p.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 6, 6);
+	} else {
+		QStylePainter painter(this);
 
-	// Fallback for styles that do not draw the background
-	painter.setBrush(_color);
-	painter.setPen(Qt::NoPen);
-	painter.drawRect(event->rect().adjusted(2, 2, -2, -2));
+		QStyleOptionButton option;
+		option.initFrom(this);
+		option.palette.setColor(QPalette::Button, _color);
+		if (isDown())
+			option.state |= QStyle::State_Sunken;
+		else
+			option.state |= QStyle::State_Raised;
 
-	// If works, overpaints the previous rectangle
-#if defined(Q_OS_MAC) || defined(Q_OS_WIN32)
-	painter.setBrush(_color);
-	painter.drawPrimitive(QStyle::PE_Frame, option);
-#else // Q_OS_MAC || Q_OS_WIN32
-	option.palette.setBrush(QPalette::Base, _color);
-	painter.drawPrimitive(QStyle::PE_PanelLineEdit, option);
-	painter.drawPrimitive(QStyle::PE_FrameLineEdit, option);
-#endif // Q_OS_MAC || Q_OS_WIN32
-}
-
-void ColorBox::mousePressEvent(QMouseEvent *event)
-{
-	if (event->button() == Qt::LeftButton) {
-		QColorDialog::ColorDialogOptions options = _alpha
-		  ? QColorDialog::ColorDialogOptions(QColorDialog::ShowAlphaChannel)
-		  : QColorDialog::ColorDialogOptions();
-		QColor color = QColorDialog::getColor(_color, this, QString(), options);
-		if (color.isValid()) {
-			_color = color;
-			update();
-			emit colorChanged(_color);
-		}
+		if (useButtonCommand(painter.style()))
+			painter.drawPrimitive(QStyle::PE_PanelButtonCommand, option);
+		else
+			painter.drawPrimitive(QStyle::PE_PanelButtonBevel, option);
 	}
-
-	QWidget::mousePressEvent(event);
 }
 
 void ColorBox::setColor(const QColor &color)
 {
 	_color = color;
 	update();
+}
+
+void ColorBox::showColorDialog()
+{
+	QColorDialog::ColorDialogOptions options = _alpha
+	  ? QColorDialog::ColorDialogOptions(QColorDialog::ShowAlphaChannel)
+	  : QColorDialog::ColorDialogOptions();
+	QColor color = QColorDialog::getColor(_color, this, QString(), options);
+
+	if (color.isValid()) {
+		_color = color;
+		update();
+		emit colorChanged(_color);
+	}
 }

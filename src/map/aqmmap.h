@@ -21,13 +21,13 @@ public:
 	qreal resolution(const QRectF &rect);
 
 	int zoom() const {return _zoom;}
-	void setZoom(int zoom) {_zoom = zoom;}
+	void setZoom(int zoom);
 	int zoomFit(const QSize &size, const RectC &rect);
 	int zoomIn();
 	int zoomOut();
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	QPointF ll2xy(const Coordinates &c);
@@ -63,7 +63,8 @@ private:
 
 	qreal tileSize() const;
 	QByteArray tileData(const QPoint &tile);
-	void drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp);
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &tp) const;
 
 	friend QDebug operator<<(QDebug dbg, const File &file);
 	friend QDebug operator<<(QDebug dbg, const Zoom &zoom);
@@ -74,6 +75,7 @@ private:
 	int _zoom;
 	RectC _bounds;
 	qreal _mapRatio;
+	qreal _factor;
 
 	bool _valid;
 	QString _errorString;

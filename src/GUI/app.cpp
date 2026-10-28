@@ -7,6 +7,7 @@
 #include <QLibraryInfo>
 #include <QImageReader>
 #include <QFileInfo>
+#include <QStyleHints>
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
 #include <QJniObject>
@@ -27,22 +28,24 @@
 
 App::App(int &argc, char **argv) : QApplication(argc, argv)
 {
-#if defined(Q_OS_WIN32) || defined(Q_OS_MAC)
+#if defined(Q_OS_WIN32) || defined(Q_OS_MACOS)
 	setApplicationName(APP_NAME);
-#else // Q_OS_WIN32 || Q_OS_MAC
+#else // Q_OS_WIN32 || Q_OS_MACOS
 	setApplicationName(QString(APP_NAME).toLower());
-#endif // Q_OS_WIN32 || Q_OS_MAC
+	setDesktopFileName(applicationName());
+#endif // Q_OS_WIN32 || Q_OS_MACOS
 	setApplicationVersion(APP_VERSION);
 
 	QTranslator *app = new QTranslator(this);
-	if (app->load(QLocale::system(), "gpxsee", "_",
-	  ProgramPaths::translationsDir()))
-		installTranslator(app);
+	QString trdir(ProgramPaths::translationsDir());
+	if (!trdir.isEmpty())
+		if (app->load(QLocale::system(), "gpxsee", "_", trdir))
+			installTranslator(app);
 
 	QTranslator *qt = new QTranslator(this);
-#if defined(Q_OS_WIN32) || defined(Q_OS_MAC)
+#if defined(Q_OS_WIN32) || defined(Q_OS_MACOS)
 	if (qt->load(QLocale::system(), "qt", "_", ProgramPaths::translationsDir()))
-#else // Q_OS_WIN32 || Q_OS_MAC
+#else // Q_OS_WIN32 || Q_OS_MACOS
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 	if (qt->load(QLocale::system(), "qt", "_", QLibraryInfo::location(
 	  QLibraryInfo::TranslationsPath)))
@@ -50,12 +53,12 @@ App::App(int &argc, char **argv) : QApplication(argc, argv)
 	if (qt->load(QLocale::system(), "qt", "_", QLibraryInfo::path(
 	  QLibraryInfo::TranslationsPath)))
 #endif // QT 6
-#endif // Q_OS_WIN32 || Q_OS_MAC
+#endif // Q_OS_WIN32 || Q_OS_MACOS
 		installTranslator(qt);
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 	setAttribute(Qt::AA_DontShowIconsInMenus);
-#endif // Q_OS_MAC
+#endif // Q_OS_MACOS
 	QNetworkProxyFactory::setUseSystemConfiguration(true);
 	/* The QNetworkAccessManager must be a child of QApplication, otherwise it
 	   triggers the following warning on exit (and may probably crash):
@@ -70,12 +73,30 @@ App::App(int &argc, char **argv) : QApplication(argc, argv)
 	loadPCSs();
 	Waypoint::loadSymbolIcons(ProgramPaths::symbolsDir());
 
-#if defined(Q_OS_WIN32) || defined(Q_OS_MAC)
+#if defined(Q_OS_WIN32) || defined(Q_OS_ANDROID)
 	QIcon::setThemeName(APP_NAME);
-#endif // Q_OS_WIN32 || Q_OS_MAC
+#elif defined(Q_OS_MACOS)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+	if (styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+		QIcon::setThemeName(APP_NAME "-Dark");
+	else
+#endif // QT 6.5
+		QIcon::setThemeName(APP_NAME);
+#else
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+	if (styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+		QIcon::setFallbackThemeName(APP_NAME "-Dark");
+	else
+#endif // QT 6.5
 	QIcon::setFallbackThemeName(APP_NAME);
+#endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0) \
+  && !defined(Q_OS_WIN32) && !defined(Q_OS_ANDROID)
+	connect(styleHints(), &QStyleHints::colorSchemeChanged, this,
+	  &App::colorSchemeChanged);
+#endif // QT 6.5 && !WIN32 && !ANDROID
 
-	_gui = new GUI();
+	_gui = new GUI(app->language());
 
 #ifdef Q_OS_ANDROID
 	connect(this, &App::applicationStateChanged, this, &App::appStateChanged);
@@ -114,6 +135,24 @@ int App::run()
 	return exec();
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0) \
+  && !defined(Q_OS_WIN32) && !defined(Q_OS_ANDROID)
+void App::colorSchemeChanged(Qt::ColorScheme colorScheme)
+{
+#if defined(Q_OS_MACOS) || defined(Q_OS_ANDROID)
+	if (colorScheme == Qt::ColorScheme::Dark)
+		QIcon::setThemeName(APP_NAME "-Dark");
+	else
+		QIcon::setThemeName(APP_NAME);
+#else
+	if (colorScheme == Qt::ColorScheme::Dark)
+		QIcon::setFallbackThemeName(APP_NAME "-Dark");
+	else
+		QIcon::setFallbackThemeName(APP_NAME);
+#endif
+}
+#endif // QT 6.5 && !WIN32 && !ANDROID
+
 #ifdef Q_OS_ANDROID
 void App::appStateChanged(Qt::ApplicationState state)
 {
@@ -135,6 +174,8 @@ void App::appStateChanged(Qt::ApplicationState state)
 						a->trigger();
 				}
 			}
+
+			_gui->showClose();
 		}
 	}
 }
@@ -169,10 +210,10 @@ void App::loadDatums()
 	QString ellipsoidsFile(ProgramPaths::ellipsoidsFile());
 	QString gcsFile(ProgramPaths::gcsFile());
 
-	if (!QFileInfo::exists(ellipsoidsFile)) {
+	if (ellipsoidsFile.isEmpty() || !QFileInfo::exists(ellipsoidsFile)) {
 		qWarning("No ellipsoids file found.");
 		ellipsoidsFile = QString();
-	} if (!QFileInfo::exists(gcsFile)) {
+	} if (gcsFile.isEmpty() || !QFileInfo::exists(gcsFile)) {
 		qWarning("No GCS file found.");
 		gcsFile = QString();
 	}
@@ -189,11 +230,11 @@ void App::loadPCSs()
 	QString projectionsFile(ProgramPaths::projectionsFile());
 	QString pcsFile(ProgramPaths::pcsFile());
 
-	if (!QFileInfo::exists(projectionsFile)) {
+	if (projectionsFile.isEmpty() || !QFileInfo::exists(projectionsFile)) {
 		qWarning("No projections file found.");
 		projectionsFile = QString();
 	}
-	if (!QFileInfo::exists(pcsFile)) {
+	if (pcsFile.isEmpty() || !QFileInfo::exists(pcsFile)) {
 		qWarning("No PCS file found.");
 		pcsFile = QString();
 	}

@@ -25,7 +25,6 @@
 #include "motioninfoitem.h"
 #include "mapview.h"
 
-
 #define MAX_DIGITAL_ZOOM 2
 #define MIN_DIGITAL_ZOOM -3
 #define MARGIN           10
@@ -33,8 +32,8 @@
 #define COORDINATES_OFFSET SCALE_OFFSET
 #define LEGEND_OFFSET SCALE_OFFSET
 
-
-MapView::MapView(Map *map, POI *poi, QWidget *parent) : QGraphicsView(parent)
+MapView::MapView(Map *map, POI *poi, QWidget *parent)
+  : QGraphicsView(parent), _map(map), _poi(poi)
 {
 	Q_ASSERT(map != 0);
 	Q_ASSERT(poi != 0);
@@ -48,6 +47,7 @@ MapView::MapView(Map *map, POI *poi, QWidget *parent) : QGraphicsView(parent)
 	setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
 	setResizeAnchor(QGraphicsView::AnchorViewCenter);
 	setAcceptDrops(false);
+	setFrameShape(QFrame::NoFrame);
 	viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
 	grabGesture(Qt::PinchGesture);
 
@@ -64,13 +64,10 @@ MapView::MapView(Map *map, POI *poi, QWidget *parent) : QGraphicsView(parent)
 	_inputProjection = GCS::gcs(4326);
 	_hidpi = true;
 	_hillShading = true;
-	_layers = Layer::Raster | Layer::Vector;
-	_map = map;
-	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi);
-	connect(_map, &Map::tilesLoaded, this, &MapView::reloadMap);
-
-	_poi = poi;
-	connect(_poi, &POI::pointsChanged, this, &MapView::updatePOI);
+	_style = -1;
+	_layer = -1;
+	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi,
+	  _hillShading, _style, _layer);
 
 	_positionSource = 0;
 	_crosshair = new CrosshairItem();
@@ -109,9 +106,11 @@ MapView::MapView(Map *map, POI *poi, QWidget *parent) : QGraphicsView(parent)
 	_showPOIIcons = false;
 	_overlapPOIs = false;
 	_showRouteWaypoints = false;
+	_showTrackWaypoints = false;
 	_showMarkers = false;
 	_markerInfoType = MarkerInfoItem::None;
 	_showPathTicks = false;
+	_showVideos = false;
 	_trackWidth = 3;
 	_routeWidth = 3;
 	_trackStyle = Qt::SolidLine;
@@ -134,6 +133,9 @@ MapView::MapView(Map *map, POI *poi, QWidget *parent) : QGraphicsView(parent)
 
 	_res = _map->resolution(_map->bounds());
 	_scene->setSceneRect(_map->bounds());
+
+	connect(_map, &Map::tilesLoaded, this, &MapView::reloadMap);
+	connect(_poi, &POI::pointsChanged, this, &MapView::updatePOI);
 
 	centerOn(_scene->sceneRect().center());
 }
@@ -186,6 +188,8 @@ PathItem *MapView::addTrack(const Track &track)
 	ti->showMarker(_showMarkers);
 	ti->showMarkerInfo(_markerInfoType);
 	ti->showTicks(_showPathTicks);
+	ti->showVideo(track.isVideo() & _showVideos);
+	ti->showPoints(_showTrackWaypoints);
 	_scene->addItem(ti);
 
 	if (_showTracks) {
@@ -379,14 +383,14 @@ void MapView::updatePOIVisibility()
 		return;
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->show();
 
 	if (!_overlapPOIs) {
 		for (POIHash::const_iterator it = _pois.constBegin();
-		  it != _pois.constEnd(); it++) {
+		  it != _pois.constEnd(); ++it) {
 			for (POIHash::const_iterator jt = _pois.constBegin();
-			  jt != _pois.constEnd(); jt++) {
+			  jt != _pois.constEnd(); ++jt) {
 				if (it.value()->isVisible() && jt.value()->isVisible()
 				  && it != jt && it.value()->collidesWithItem(jt.value()))
 					jt.value()->hide();
@@ -410,7 +414,7 @@ void MapView::rescale()
 		_waypoints.at(i)->setMap(_map);
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->setMap(_map);
 
 	_crosshair->setMap(_map);
@@ -441,9 +445,14 @@ void MapView::setMap(Map *map)
 
 	disconnect(_map, &Map::tilesLoaded, this, &MapView::reloadMap);
 	_map->unload();
+	if (map != _map) {
+		_style = -1;
+		_layer = -1;
+	}
 
 	_map = map;
-	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi);
+	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi,
+	  _hillShading, _style, _layer);
 	connect(_map, &Map::tilesLoaded, this, &MapView::reloadMap);
 
 	digitalZoom(0);
@@ -494,7 +503,7 @@ void MapView::setGraph(int index)
 void MapView::updatePOI()
 {
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		_scene->removeItem(it.value());
 	qDeleteAll(_pois);
 	_pois.clear();
@@ -603,7 +612,7 @@ void MapView::digitalZoom(int zoom)
 	for (int i = 0; i < _waypoints.size(); i++)
 		_waypoints.at(i)->setDigitalZoom(_digitalZoom);
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->setDigitalZoom(_digitalZoom);
 
 	_mapScale->setDigitalZoom(_digitalZoom);
@@ -930,6 +939,14 @@ void MapView::showRouteWaypoints(bool show)
 		_routes.at(i)->showWaypoints(show);
 }
 
+void MapView::showTrackWaypoints(bool show)
+{
+	_showTrackWaypoints = show;
+
+	for (int i = 0; i < _tracks.size(); i++)
+		_tracks.at(i)->showPoints(show);
+}
+
 void MapView::showMarkers(bool show)
 {
 	_showMarkers = show;
@@ -953,10 +970,19 @@ void MapView::showMarkerInfo(MarkerInfoItem::Type type)
 void MapView::showTicks(bool show)
 {
 	_showPathTicks = show;
+
 	for (int i = 0; i < _tracks.size(); i++)
 		_tracks.at(i)->showTicks(show);
 	for (int i = 0; i < _routes.size(); i++)
 		_routes.at(i)->showTicks(show);
+}
+
+void MapView::showVideos(bool show)
+{
+	_showVideos = show;
+
+	for (int i = 0; i < _tracks.size(); i++)
+		_tracks.at(i)->showVideo(_tracks.at(i)->isVideo() && show);
 }
 
 void MapView::showMap(bool show)
@@ -970,7 +996,7 @@ void MapView::showPOI(bool show)
 	_showPOI = show;
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->setVisible(show);
 
 	updatePOIVisibility();
@@ -981,7 +1007,7 @@ void MapView::showPOILabels(bool show)
 	_showPOILabels = show;
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->showLabel(show);
 
 	updatePOIVisibility();
@@ -992,7 +1018,7 @@ void MapView::showPOIIcons(bool show)
 	_showPOIIcons = show;
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->showIcon(show);
 
 	updatePOIVisibility();
@@ -1115,7 +1141,7 @@ void MapView::setPOISize(int size)
 	_poiSize = size;
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->setSize(size);
 }
 
@@ -1124,7 +1150,7 @@ void MapView::setPOIColor(const QColor &color)
 	_poiColor = color;
 
 	for (POIHash::const_iterator it = _pois.constBegin();
-	  it != _pois.constEnd(); it++)
+	  it != _pois.constEnd(); ++it)
 		it.value()->setColor(color);
 }
 
@@ -1165,12 +1191,6 @@ void MapView::drawBackground(QPainter *painter, const QRectF &rect)
 			flags = Map::Block;
 		else if (_opengl)
 			flags = Map::OpenGL;
-		if (_hillShading)
-			flags |= Map::HillShading;
-		if (_layers & Layer::Raster)
-			flags |= Map::Rasters;
-		if (_layers & Layer::Vector)
-			flags |= Map::Vectors;
 
 		_map->draw(painter, ir, flags);
 	}
@@ -1245,17 +1265,12 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
 	QGraphicsView::mouseMoveEvent(event);
 }
 
-
 void MapView::mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton) {
 		if (event->modifiers() & MODIFIER)
 			QApplication::clipboard()->setText(Format::coordinates(_map->xy2ll(
 			  mapToScene(event->pos())), _cursorCoordinates->format()));
-#ifdef Q_OS_ANDROID
-		else
-			emit clicked(event->pos());
-#endif // Q_OS_ANDROID
 	}
 
 	QGraphicsView::mousePressEvent(event);
@@ -1287,10 +1302,10 @@ bool MapView::gestureEvent(QGestureEvent *event)
 	return true;
 }
 
-void MapView::useOpenGL(bool use)
+bool MapView::useOpenGL(bool use)
 {
 	if (_opengl == use)
-		return;
+		return false;
 
 	_opengl = use;
 
@@ -1298,6 +1313,8 @@ void MapView::useOpenGL(bool use)
 		setViewport(new QOpenGLWidget);
 	else
 		setViewport(new QWidget);
+
+	return true;
 }
 
 void MapView::useAntiAliasing(bool use)
@@ -1309,14 +1326,34 @@ void MapView::drawHillShading(bool draw)
 {
 	_hillShading = draw;
 
-	setMap(_map);
+	_map->unload();
+	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi,
+	  _hillShading, _style, _layer);
+
+	reloadMap();
 }
 
-void MapView::selectLayers(MapView::Layers layers)
+void MapView::selectStyle(int style)
 {
-	_layers = layers;
+	_style = style;
+	_layer = -1;
 
-	setMap(_map);
+	_map->unload();
+	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi,
+	  _hillShading, _style, _layer);
+
+	reloadMap();
+}
+
+void MapView::selectLayer(int layer)
+{
+	_layer = layer;
+
+	_map->unload();
+	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi,
+	  _hillShading, _style, _layer);
+
+	reloadMap();
 }
 
 void MapView::useStyles(bool use)
@@ -1481,12 +1518,15 @@ void MapView::drawInfoBackground(bool draw)
 
 void MapView::setHidpi(bool hidpi)
 {
+	_hidpi = hidpi;
+
 	QRectF vr(mapToScene(viewport()->rect()).boundingRect()
 	  .intersected(_map->bounds()));
 	RectC cr(_map->xy2ll(vr.topLeft()), _map->xy2ll(vr.bottomRight()));
 
 	_map->unload();
-	_map->load(_inputProjection, _outputProjection, _deviceRatio, hidpi);
+	_map->load(_inputProjection, _outputProjection, _deviceRatio, _hidpi,
+	  _hillShading, _style, _layer);
 	rescale();
 
 	QPointF nc = QRectF(_map->ll2xy(cr.topLeft()),

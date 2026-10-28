@@ -18,12 +18,14 @@ public:
 	TIFFFile(QIODevice *device);
 
 	bool isValid() const {return _ifd != 0;}
-	bool isBE() const {return _be;}
-	quint32 ifd() const {return _ifd;}
+	bool isBigEndian() const {return _be;}
+	bool isBigTIFF() const {return _big;}
+	qint64 ifd() const {return _ifd;}
 
 	bool seek(qint64 pos) {return _device->seek(_offset + pos);}
 	qint64 pos() const {return _offset + _device->pos();}
-	QByteArray read(qint64 maxSize) {return _device->read(maxSize);}
+	qint64 read(char *data, qint64 maxSize)
+	  {return _device->read(data, maxSize);}
 
 	template<class T> bool readValue(T &val)
 	{
@@ -52,9 +54,8 @@ public:
 
 private:
 	QIODevice *_device;
-	bool _be;
-	quint32 _ifd;
-	qint64 _offset;
+	bool _be, _big;
+	qint64 _ifd, _offset;
 };
 
 #endif // TIFFFILE_H

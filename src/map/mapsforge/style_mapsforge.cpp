@@ -1,0 +1,1019 @@
+#include <QFile>
+#include <QXmlStreamReader>
+#include <QUrl>
+#include <QFileInfo>
+#include <QImageReader>
+#include <QPainter>
+#include <QDir>
+#include <QtMath>
+#include "common/programpaths.h"
+#include "style_mapsforge.h"
+
+using namespace Mapsforge;
+
+static QString resourcePath(const QString &src, const QString &dir)
+{
+	QUrl url(src);
+
+	return (url.scheme().isEmpty())
+	  ? QDir(dir).absoluteFilePath(src)
+	  : QDir(dir).absoluteFilePath(url.toLocalFile());
+}
+
+static QImage image(const QString &path, int width, int height, int percent,
+  qreal ratio)
+{
+	if (!QFileInfo::exists(path)) {
+		qWarning("%s: no such file", qUtf8Printable(path));
+		return QImage();
+	}
+
+	QImageReader ir(path);
+	QSize s(ir.size());
+
+	if (ir.format() == "svg") {
+		if (!height && !width) {
+			height = 20;
+			width = 20;
+		} else if (!width)
+			width = s.height() / (s.height() / (double)height);
+		else if (!height)
+			height = s.width() / (s.width() / (double)width);
+
+		if (percent != 100) {
+			width *= percent / 100.0;
+			height *= percent / 100.0;
+		}
+
+		ir.setScaledSize(QSize(width * ratio, height * ratio));
+		QImage img(ir.read());
+		img.setDevicePixelRatio(ratio);
+		return img;
+	} else {
+		if (!height && !width) {
+			height = s.height();
+			width = s.width();
+		} else if (!width)
+			width = s.height() / (s.height() / (double)height);
+		else if (!height)
+			height = s.width() / (s.width() / (double)width);
+
+		if (percent != 100) {
+			width *= percent / 100.0;
+			height *= percent / 100.0;
+		}
+
+		if (width != s.width() || height != s.height())
+			ir.setScaledSize(QSize(width, height));
+		return QImage(ir.read());
+	}
+}
+
+static QList<unsigned> keyList(const MapData &data, const QList<QByteArray> &in)
+{
+	QList<unsigned> out;
+
+	for (int i = 0; i < in.size(); i++) {
+		if (in.at(i) == "*")
+			out.append(0);
+		else {
+			unsigned key = data.tagId(in.at(i));
+			if (key)
+				out.append(key);
+		}
+	}
+
+	return out;
+}
+
+static QList<QByteArray> valList(const QList<QByteArray> &in)
+{
+	QList<QByteArray> out;
+
+	for (int i = 0; i < in.size(); i++) {
+		if (in.at(i) == "*")
+			out.append(QByteArray());
+		else
+			out.append(in.at(i));
+	}
+
+	return out;
+}
+
+const Style::Menu::Layer *Style::Menu::findLayer(const QString &id) const
+{
+	for (int i = 0; i < _layers.size(); i++)
+		if (_layers.at(i).id() == id)
+			return &_layers.at(i);
+
+	qWarning("%s: layer not found", qUtf8Printable(id));
+
+	return 0;
+}
+
+const Style::Menu::Layer *Style::Menu::layerAt(int index) const
+{
+	int idx = -1;
+
+	for (int i = 0; i < _layers.size(); i++) {
+		if (_layers.at(i).visible()) {
+			if (++idx == index)
+				return &_layers.at(i);
+		}
+	}
+
+	return 0;
+}
+
+void Style::Menu::addCats(const Layer *layer, QSet<QString> &cats) const
+{
+	if (!layer)
+		return;
+
+	if (!layer->parent().isNull())
+		addCats(findLayer(layer->parent()), cats);
+
+	for (int i = 0; i < layer->cats().size(); i++)
+		cats.insert(layer->cats().at(i));
+
+	for (int i = 0; i < layer->overlays().size(); i++) {
+		const Layer *overlay = findLayer(layer->overlays().at(i));
+		if (overlay && overlay->enabled())
+			addCats(overlay, cats);
+	}
+}
+
+QSet<QString> Style::Menu::cats(int layer) const
+{
+	QSet<QString> c;
+	const Layer *l = (layer < 0) ? findLayer(_defaultvalue) : layerAt(layer);
+
+	addCats(l, c);
+
+	return c;
+}
+
+QStringList Style::Menu::layers(const QString &lang, int &defaultLayer) const
+{
+	QStringList list;
+
+	for (int i = 0; i < _layers.size(); i++) {
+		if (_layers.at(i).visible()) {
+			if (_layers.at(i).id() == _defaultvalue)
+				defaultLayer = list.size();
+
+			const QMap<QString, QString> &names = _layers.at(i).names();
+			QMap<QString, QString>::const_iterator it = names.find(lang.left(2));
+			QString name((it == names.constEnd())
+			  ? names.value(_defaultlang) : *it);
+			list.append(name.isEmpty() ? _layers.at(i).id() : name);
+		}
+	}
+
+	return list;
+}
+
+Style::Rule::Filter::Filter(const MapData &data, const QList<QByteArray> &keys,
+  const QList<QByteArray> &vals) : _neg(false), _excl(false)
+{
+	_keys = keyList(data, keys);
+
+	QList<QByteArray> vc(vals);
+	if (vc.removeAll("~"))
+		_neg = true;
+	if (vc.removeAll("-"))
+		_excl = true;
+	_vals = valList(vc);
+}
+
+bool Style::Rule::match(bool path, const QVector<MapData::Tag> &tags) const
+{
+	Type type = path ? WayType : NodeType;
+
+	if (!(_type == Rule::AnyType || _type == type))
+		return false;
+
+	for (int i = 0; i < _filters.size(); i++)
+		if (!_filters.at(i).match(tags))
+			return false;
+
+	return true;
+}
+
+bool Style::Rule::matchPath(bool closed, const QVector<MapData::Tag> &tags) const
+{
+	Closed cl = closed ? YesClosed : NoClosed;
+
+	if (_closed && cl != _closed)
+		return false;
+
+	for (int i = 0; i < _filters.size(); i++)
+		if (!_filters.at(i).match(tags))
+			return false;
+
+	return true;
+}
+
+void Style::area(QXmlStreamReader &reader, const QString &dir, qreal ratio,
+  qreal baseStrokeWidth, const Rule &rule)
+{
+	PathRender ri(rule, _paths.size() + _circles.size() + _hillShading.size());
+	const QXmlStreamAttributes &attr = reader.attributes();
+	QString file;
+	QColor fillColor;
+	int height = 0, width = 0, percent = 100;
+	bool ok;
+
+	ri._area = true;
+	if (attr.hasAttribute("fill"))
+		fillColor = QColor(attr.value("fill").toString());
+	if (attr.hasAttribute("stroke"))
+		ri._strokeColor = QColor(attr.value("stroke").toString());
+	if (attr.hasAttribute("stroke-width")) {
+		ri._strokeWidth = attr.value("stroke-width").toFloat(&ok)
+		  * baseStrokeWidth;
+		if (!ok || ri._strokeWidth < 0) {
+			reader.raiseError("invalid stroke-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("scale")) {
+		QString scale(attr.value("scale").toString());
+		if (scale == "all")
+			ri._scale = PathRender::Scale::All;
+		else if (scale == "none")
+			ri._scale = PathRender::Scale::None;
+	}
+	if (attr.hasAttribute("src"))
+		file = resourcePath(attr.value("src").toString(), dir);
+	if (attr.hasAttribute("symbol-height")) {
+		height = attr.value("symbol-height").toInt(&ok);
+		if (!ok || height < 0) {
+			reader.raiseError("invalid symbol-height value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-width")) {
+		width = attr.value("symbol-width").toInt(&ok);
+		if (!ok || width < 0) {
+			reader.raiseError("invalid symbol-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-percent")) {
+		percent = attr.value("symbol-percent").toInt(&ok);
+		if (!ok || percent < 0) {
+			reader.raiseError("invalid symbol-percent value");
+			return;
+		}
+	}
+
+	if (!file.isNull())
+		ri._brush = QBrush(image(file, width, height, percent, ratio));
+	else if (fillColor.isValid())
+		ri._brush = QBrush(fillColor);
+
+	if (ri.rule()._type == Rule::AnyType || ri.rule()._type == Rule::WayType)
+		_paths.append(ri);
+
+	reader.skipCurrentElement();
+}
+
+void Style::line(QXmlStreamReader &reader, const QString &dir, qreal ratio,
+  qreal baseStrokeWidth, const Rule &rule)
+{
+	PathRender ri(rule, _paths.size() + _circles.size() + _hillShading.size());
+	const QXmlStreamAttributes &attr = reader.attributes();
+	QString file;
+	int height = 0, width = 0, percent = 100;
+	bool ok;
+
+	ri._brush = Qt::NoBrush;
+
+	if (attr.hasAttribute("stroke"))
+		ri._strokeColor = QColor(attr.value("stroke").toString());
+	if (attr.hasAttribute("stroke-width")) {
+		ri._strokeWidth = attr.value("stroke-width").toFloat(&ok)
+		  * baseStrokeWidth;
+		if (!ok || ri._strokeWidth < 0) {
+			reader.raiseError("invalid stroke-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("stroke-dasharray")) {
+		QStringList l(attr.value("stroke-dasharray").toString().split(','));
+		ri._strokeDasharray.resize(l.size());
+		for (int i = 0; i < l.size(); i++) {
+			ri._strokeDasharray[i] = l.at(i).toDouble(&ok);
+			if (!ok || ri._strokeDasharray[i] < 0) {
+				reader.raiseError("invalid stroke-dasharray value");
+				return;
+			}
+		}
+	}
+	if (attr.hasAttribute("stroke-linecap")) {
+		QString cap(attr.value("stroke-linecap").toString());
+		if (cap == "butt")
+			ri._strokeCap = Qt::FlatCap;
+		else if (cap == "round")
+			ri._strokeCap = Qt::RoundCap;
+		else if (cap == "square")
+			ri._strokeCap = Qt::SquareCap;
+	}
+	if (attr.hasAttribute("stroke-linejoin")) {
+		QString join(attr.value("stroke-linejoin").toString());
+		if (join == "miter")
+			ri._strokeJoin = Qt::MiterJoin;
+		else if (join == "round")
+			ri._strokeJoin = Qt::RoundJoin;
+		else if (join == "bevel")
+			ri._strokeJoin = Qt::BevelJoin;
+	}
+	if (attr.hasAttribute("scale")) {
+		QString scale(attr.value("scale").toString());
+		if (scale == "all")
+			ri._scale = PathRender::Scale::All;
+		else if (scale == "none")
+			ri._scale = PathRender::Scale::None;
+	}
+	if (attr.hasAttribute("curve")) {
+		QString curve(attr.value("curve").toString());
+		if (curve == "cubic")
+			ri._curve = true;
+	}
+	if (attr.hasAttribute("dy")) {
+		ri._dy = attr.value("dy").toDouble(&ok) * baseStrokeWidth;
+		if (!ok) {
+			reader.raiseError("invalid dy value");
+			return;
+		}
+	}
+
+	if (attr.hasAttribute("src"))
+		file = resourcePath(attr.value("src").toString(), dir);
+	if (attr.hasAttribute("symbol-height")) {
+		height = attr.value("symbol-height").toInt(&ok);
+		if (!ok || height < 0) {
+			reader.raiseError("invalid symbol-height value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-width")) {
+		width = attr.value("symbol-width").toInt(&ok);
+		if (!ok || width < 0) {
+			reader.raiseError("invalid symbol-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-percent")) {
+		percent = attr.value("symbol-percent").toInt(&ok);
+		if (!ok || percent < 0) {
+			reader.raiseError("invalid symbol-percent value");
+			return;
+		}
+	}
+	if (!file.isNull())
+		ri._img = image(file, width, height, percent, ratio);
+
+	if (ri.rule()._type == Rule::AnyType || ri.rule()._type == Rule::WayType)
+		_paths.append(ri);
+
+	reader.skipCurrentElement();
+}
+
+void Style::circle(QXmlStreamReader &reader, qreal baseStrokeWidth,
+  const Rule &rule)
+{
+	CircleRender ri(rule, _paths.size() + _circles.size() + _hillShading.size());
+	const QXmlStreamAttributes &attr = reader.attributes();
+	bool ok;
+	QColor fillColor, strokeColor;
+	qreal strokeWidth = 0;
+
+	if (attr.hasAttribute("fill"))
+		fillColor = QColor(attr.value("fill").toString());
+	if (attr.hasAttribute("stroke"))
+		strokeColor = QColor(attr.value("stroke").toString());
+	if (attr.hasAttribute("stroke-width")) {
+		strokeWidth = attr.value("stroke-width").toFloat(&ok) * baseStrokeWidth;
+		if (!ok || strokeWidth < 0) {
+			reader.raiseError("invalid stroke-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("radius")) {
+		ri._radius = attr.value("radius").toDouble(&ok) * baseStrokeWidth;
+		if (!ok || ri._radius <= 0) {
+			reader.raiseError("invalid radius value");
+			return;
+		}
+	} else {
+		reader.raiseError("missing radius");
+		return;
+	}
+	if (attr.hasAttribute("scale-radius")) {
+		if (attr.value("scale-radius").toString() == "true")
+			ri._scale = true;
+	}
+
+	ri._pen = (strokeColor.isValid() && strokeWidth > 0)
+	  ? QPen(QBrush(strokeColor), strokeWidth) : Qt::NoPen;
+	ri._brush = fillColor.isValid() ? QBrush(fillColor) : Qt::NoBrush;
+
+	if (ri.rule()._type == Rule::AnyType || ri.rule()._type == Rule::NodeType)
+		_circles.append(ri);
+
+	reader.skipCurrentElement();
+}
+
+void Style::text(QXmlStreamReader &reader, const MapData &data,
+  const Rule &rule, bool line)
+{
+	TextRender ri(rule);
+	const QXmlStreamAttributes &attr = reader.attributes();
+	int fontSize = 9;
+	bool bold = false, italic = false;
+	QString fontFamily("Helvetica");
+	QFont::Capitalization capitalization = QFont::MixedCase;
+	bool ok;
+
+	if (attr.hasAttribute("k"))
+		ri._key = data.tagId(attr.value("k").toLatin1());
+	if (attr.hasAttribute("fill"))
+		ri._fillColor = QColor(attr.value("fill").toString());
+	if (attr.hasAttribute("stroke"))
+		ri._strokeColor = QColor(attr.value("stroke").toString());
+	if (attr.hasAttribute("stroke-width")) {
+		ri._strokeWidth = attr.value("stroke-width").toFloat(&ok);
+		if (!ok || ri._strokeWidth < 0) {
+			reader.raiseError("invalid stroke-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("font-size")) {
+		fontSize = attr.value("font-size").toFloat(&ok);
+		if (!ok || fontSize < 0) {
+			reader.raiseError("invalid font-size value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("font-style")) {
+		QString style(attr.value("font-style").toString());
+		if (style == "bold")
+			bold = true;
+		else if (style == "italic")
+			italic = true;
+		else if (style == "bold_italic") {
+			bold = true;
+			italic = true;
+		}
+	}
+	if (attr.hasAttribute("font-family")) {
+		QString family(attr.value("font-family").toString());
+		if (family == "monospace")
+			fontFamily = "Courier New";
+		else if (family == "serif")
+			fontFamily = "Times New Roman";
+	}
+	if (attr.hasAttribute("text-transform")) {
+		QString transform(attr.value("text-transform").toString());
+		if (transform == "uppercase")
+			capitalization = QFont::AllUppercase;
+		else if (transform == "lowercase")
+			capitalization = QFont::AllLowercase;
+		else if (transform == "capitalize")
+			capitalization = QFont::Capitalize;
+	}
+	if (attr.hasAttribute("priority")) {
+		ri._priority = attr.value("priority").toInt(&ok);
+		if (!ok) {
+			reader.raiseError("invalid priority value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-id"))
+		ri._symbolId = attr.value("symbol-id").toString();
+	if (line && attr.hasAttribute("text-orientation")) {
+		if (attr.value("text-orientation").toString() == "auto_down")
+			ri._shield = true;
+	}
+	if (!line && attr.hasAttribute("position")) {
+		QString position(attr.value("position").toString());
+		if (position == "center")
+			ri._anchor = TextPointItem::Center;
+		else if (position == "below")
+			ri._anchor = TextPointItem::Top;
+		else if (position == "above")
+			ri._anchor = TextPointItem::Bottom;
+		else if (position == "left" || position == "below_left"
+		  || position == "above_left")
+			ri._anchor = TextPointItem::Right;
+		else if (position == "right" || position == "below_right"
+		  || position == "above_right")
+			ri._anchor = TextPointItem::Left;
+	}
+
+	ri._font.setFamily(fontFamily);
+	ri._font.setPixelSize(fontSize);
+	ri._font.setBold(bold);
+	ri._font.setItalic(italic);
+	ri._font.setCapitalization(capitalization);
+
+	if (fontSize) {
+		if (line)
+			_pathLabels.append(ri);
+		else
+			_labels.append(ri);
+	}
+
+	reader.skipCurrentElement();
+}
+
+void Style::symbol(QXmlStreamReader &reader, const QString &dir, qreal ratio,
+  const Rule &rule, bool line)
+{
+	SymbolRender ri(rule);
+	const QXmlStreamAttributes &attr = reader.attributes();
+	QString file;
+	int height = 0, width = 0, percent = 100;
+	bool ok, bitmapLine = false;
+
+	if (attr.hasAttribute("src"))
+		file = resourcePath(attr.value("src").toString(), dir);
+	else {
+		reader.raiseError("missing src value");
+		return;
+	}
+	if (attr.hasAttribute("symbol-height")) {
+		height = attr.value("symbol-height").toInt(&ok);
+		if (!ok || height < 0) {
+			reader.raiseError("invalid symbol-height value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-width")) {
+		width = attr.value("symbol-width").toInt(&ok);
+		if (!ok || width < 0) {
+			reader.raiseError("invalid symbol-width value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("symbol-percent")) {
+		percent = attr.value("symbol-percent").toInt(&ok);
+		if (!ok || percent < 0) {
+			reader.raiseError("invalid symbol-percent value");
+			return;
+		}
+	}
+
+	// Convert repeating "always-display" lineSymbols to bitmap lines
+	if (line && (rule._type == Rule::AnyType || rule._type == Rule::WayType)) {
+		bool repeat = (attr.value("repeat").toString() == "true");
+		bool always = (attr.value("display").toString() == "always");
+		double start = attr.hasAttribute("repeat-start")
+		  ? attr.value("repeat-start").toDouble(&ok) : 30;
+
+		if (always && repeat && ok && start == 0)
+			bitmapLine = true;
+	}
+
+	if (bitmapLine) {
+		PathRender pr(rule, _paths.size() + _circles.size()
+		  + _hillShading.size());
+
+		double gap = attr.hasAttribute("repeat-gap")
+		  ? attr.value("repeat-gap").toDouble(&ok) : 200;
+		if (!ok || gap < 0) {
+			reader.raiseError("invalid repeat-gap value");
+			return;
+		}
+
+		QImage s(image(file, width, height, percent, ratio));
+		pr._img = QImage(qCeil(gap) + s.width(), s.height(),
+		  QImage::Format_ARGB32_Premultiplied);
+		pr._img.setDevicePixelRatio(s.devicePixelRatio());
+		pr._img.fill(Qt::transparent);
+		QPainter painter(&pr._img);
+		painter.drawImage(QPoint(0, 0), s);
+
+		pr._brush = Qt::NoBrush;
+
+		_paths.append(pr);
+	} else {
+		ri._img = image(file, width, height, percent, ratio);
+
+		if (attr.hasAttribute("priority")) {
+			ri._priority = attr.value("priority").toInt(&ok);
+			if (!ok) {
+				reader.raiseError("invalid priority value");
+				return;
+			}
+		}
+		if (attr.hasAttribute("rotate")) {
+			if (attr.value("rotate").toString() == "false")
+				ri._rotate = false;
+		}
+		if (attr.hasAttribute("id"))
+			ri._id = attr.value("id").toString();
+
+		if (line)
+			_lineSymbols.append(ri);
+		else
+			_symbols.append(ri);
+	}
+
+	reader.skipCurrentElement();
+}
+
+void Style::rule(QXmlStreamReader &reader, const QString &dir,
+  const MapData &data, qreal ratio, qreal baseStrokeWidth,
+  const QSet<QString> &cats, const Rule &parent)
+{
+	Rule r(parent);
+	const QXmlStreamAttributes &attr = reader.attributes();
+	bool ok;
+
+	if (attr.hasAttribute("cat")
+	  && !cats.contains(attr.value("cat").toString())) {
+		reader.skipCurrentElement();
+		return;
+	}
+
+	if (attr.value("e").toString() == "way")
+		r.setType(Rule::WayType);
+	else if (attr.value("e").toString() == "node")
+		r.setType(Rule::NodeType);
+
+	if (attr.hasAttribute("zoom-min")) {
+		r.setMinZoom(attr.value("zoom-min").toInt(&ok));
+		if (!ok || r._zooms.min() < 0) {
+			reader.raiseError("invalid zoom-min value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("zoom-max")) {
+		r.setMaxZoom(attr.value("zoom-max").toInt(&ok));
+		if (!ok || r._zooms.max() < 0) {
+			reader.raiseError("invalid zoom-max value");
+			return;
+		}
+	}
+
+	if (attr.hasAttribute("closed")) {
+		if (attr.value("closed").toString() == "yes")
+			r.setClosed(Rule::YesClosed);
+		else if (attr.value("closed").toString() == "no")
+			r.setClosed(Rule::NoClosed);
+	}
+
+	QList<QByteArray> keys(attr.value("k").toLatin1().split('|'));
+	QList<QByteArray> vals(attr.value("v").toLatin1().split('|'));
+	r.addFilter(Rule::Filter(data, keys, vals));
+
+	while (reader.readNextStartElement()) {
+		if (reader.name() == QLatin1String("rule"))
+			rule(reader, dir, data, ratio, baseStrokeWidth, cats, r);
+		else if (reader.name() == QLatin1String("area"))
+			area(reader, dir, ratio, baseStrokeWidth, r);
+		else if (reader.name() == QLatin1String("line"))
+			line(reader, dir, ratio, baseStrokeWidth, r);
+		else if (reader.name() == QLatin1String("circle"))
+			circle(reader, baseStrokeWidth, r);
+		else if (reader.name() == QLatin1String("pathText"))
+			text(reader, data, r, true);
+		else if (reader.name() == QLatin1String("caption"))
+			text(reader, data, r, false);
+		else if (reader.name() == QLatin1String("symbol"))
+			symbol(reader, dir, ratio, r, false);
+		else if (reader.name() == QLatin1String("lineSymbol"))
+			symbol(reader, dir, ratio, r, true);
+		else
+			reader.skipCurrentElement();
+	}
+}
+
+void Style::hillshading(QXmlStreamReader &reader, const QSet<QString> &cats)
+{
+	Rule r;
+	const QXmlStreamAttributes &attr = reader.attributes();
+	bool ok;
+	int layer = 5;
+
+	if (attr.hasAttribute("cat")
+		&& !cats.contains(attr.value("cat").toString())) {
+		reader.skipCurrentElement();
+		return;
+	}
+	if (attr.hasAttribute("zoom-min")) {
+		r.setMinZoom(attr.value("zoom-min").toInt(&ok));
+		if (!ok || r._zooms.min() < 0) {
+			reader.raiseError("invalid zoom-min value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("zoom-max")) {
+		r.setMaxZoom(attr.value("zoom-max").toInt(&ok));
+		if (!ok || r._zooms.max() < 0) {
+			reader.raiseError("invalid zoom-max value");
+			return;
+		}
+	}
+	if (attr.hasAttribute("layer")) {
+		layer = attr.value("layer").toInt(&ok);
+		if (!ok || layer < 0) {
+			reader.raiseError("invalid layer value");
+			return;
+		}
+	}
+
+	_hillShading.append(HillShadingRender(r, _paths.size() + _circles.size()
+	  + _hillShading.size(), layer));
+
+	reader.skipCurrentElement();
+}
+
+static QString cat(QXmlStreamReader &reader)
+{
+	const QXmlStreamAttributes &attr = reader.attributes();
+
+	if (!attr.hasAttribute("id")) {
+		reader.raiseError("Missing id attribute");
+		return QString();
+	}
+
+	QString id(attr.value("id").toString());
+	reader.skipCurrentElement();
+
+	return id;
+}
+
+void Style::name(QXmlStreamReader &reader, Menu::Layer &layer)
+{
+	const QXmlStreamAttributes &attr = reader.attributes();
+
+	if (!attr.hasAttribute("lang")) {
+		reader.raiseError("Missing lang attribute");
+		return;
+	}
+	if (!attr.hasAttribute("value")) {
+		reader.raiseError("Missing value attribute");
+		return;
+	}
+
+	layer.addName(attr.value("value").toString(), attr.value("lang").toString());
+
+	reader.skipCurrentElement();
+}
+
+Style::Menu::Layer Style::layer(QXmlStreamReader &reader)
+{
+	const QXmlStreamAttributes &attr = reader.attributes();
+	if (!attr.hasAttribute("id")) {
+		reader.raiseError("Missing id attribute");
+		return Menu::Layer();
+	}
+
+	Menu::Layer l(attr.value("id").toString(),
+	  attr.value("enabled").toString() == "true",
+	  attr.value("visible").toString() == "true");
+
+	if (attr.hasAttribute("parent"))
+		l.setParent(attr.value("parent").toString());
+
+	while (reader.readNextStartElement()) {
+		if (reader.name() == QLatin1String("name"))
+			name(reader, l);
+		else if (reader.name() == QLatin1String("cat"))
+			l.addCat(cat(reader));
+		else if (reader.name() == QLatin1String("overlay"))
+			l.addOverlay(cat(reader));
+		else
+			reader.skipCurrentElement();
+	}
+
+	return l;
+}
+
+Style::Menu Style::stylemenu(QXmlStreamReader &reader)
+{
+	const QXmlStreamAttributes &attr = reader.attributes();
+	if (!attr.hasAttribute("defaultvalue")) {
+		reader.raiseError("Missing defaultvalue attribute");
+		return Menu();
+	}
+	if (!attr.hasAttribute("defaultlang")) {
+		reader.raiseError("Missing defaultlang attribute");
+		return Menu();
+	}
+
+	Style::Menu menu(attr.value("defaultvalue").toString(),
+	  attr.value("defaultlang").toString());
+
+	while (reader.readNextStartElement()) {
+		if (reader.name() == QLatin1String("layer"))
+			menu.addLayer(layer(reader));
+		else
+			reader.skipCurrentElement();
+	}
+
+	return menu;
+}
+
+void Style::rendertheme(QXmlStreamReader &reader, const QString &dir,
+  const MapData &data, qreal ratio, int layer)
+{
+	Rule r;
+	QSet<QString> cats;
+	qreal baseStrokeWidth = 1.0;
+
+	const QXmlStreamAttributes &attr = reader.attributes();
+	if (attr.hasAttribute("base-stroke-width")) {
+		bool ok;
+		baseStrokeWidth = attr.value("base-stroke-width").toFloat(&ok);
+		if (!ok || baseStrokeWidth < 0) {
+			reader.raiseError("invalid base-stroke-width value");
+			return;
+		}
+	}
+
+	while (reader.readNextStartElement()) {
+		if (reader.name() == QLatin1String("rule"))
+			rule(reader, dir, data, ratio, baseStrokeWidth, cats, r);
+		else if (reader.name() == QLatin1String("hillshading"))
+			hillshading(reader, cats);
+		else if (reader.name() == QLatin1String("stylemenu")) {
+			_menu = stylemenu(reader);
+			cats = _menu.cats(layer);
+		} else
+			reader.skipCurrentElement();
+	}
+}
+
+bool Style::loadXml(const QString &path, const MapData &data, qreal ratio,
+  int layer)
+{
+	QFile file(path);
+	if (!file.open(QFile::ReadOnly))
+		return false;
+	QXmlStreamReader reader(&file);
+	QFileInfo fi(path);
+
+	if (reader.readNextStartElement()) {
+		if (reader.name() == QLatin1String("rendertheme"))
+			rendertheme(reader, fi.absolutePath(), data, ratio, layer);
+		else
+			reader.raiseError("Not a Mapsforge style file");
+	}
+
+	if (reader.error())
+		qWarning("%s:%lld %s", qUtf8Printable(path), reader.lineNumber(),
+		  qUtf8Printable(reader.errorString()));
+
+	return !reader.error();
+}
+
+Style::Style(const QString &path, const MapData &data, qreal ratio, int layer)
+{
+	if (!loadXml(path, data, ratio, layer)) {
+		_paths = QList<PathRender>();
+		_circles = QList<CircleRender>();
+		_pathLabels = QList<TextRender>();
+		_labels = QList<TextRender>();
+		_symbols = QList<SymbolRender>();
+		_lineSymbols = QList<SymbolRender>();
+		_hillShading = QList<HillShadingRender>();
+		_menu = Menu();
+	} else {
+		std::sort(_symbols.begin(), _symbols.end());
+		std::sort(_lineSymbols.begin(), _lineSymbols.end());
+		std::stable_sort(_labels.begin(), _labels.end());
+		std::stable_sort(_pathLabels.begin(), _pathLabels.end());
+	}
+}
+
+const Style::HillShadingRender *Style::hillShading(int zoom) const
+{
+	for (int i = 0; i < _hillShading.size(); i++) {
+		const HillShadingRender &hr = _hillShading.at(i);
+		if (hr.rule()._zooms.contains(zoom))
+			return &hr;
+	}
+
+	return 0;
+}
+
+QList<const Style::TextRender*> Style::pathLabels(int zoom) const
+{
+	QList<const TextRender*> list;
+
+	for (int i = 0; i < _pathLabels.size(); i++)
+		if (_pathLabels.at(i).rule()._zooms.contains(zoom))
+			list.append(&_pathLabels.at(i));
+
+	return list;
+}
+
+QList<const Style::TextRender*> Style::labels(int zoom) const
+{
+	QList<const TextRender*> list;
+
+	for (int i = 0; i < _labels.size(); i++) {
+		const TextRender &label= _labels.at(i);
+		if (label.rule()._zooms.contains(zoom))
+			list.append(&label);
+	}
+
+	return list;
+}
+
+QList<const Style::SymbolRender*> Style::lineSymbols(int zoom) const
+{
+	QList<const SymbolRender*> list;
+
+	for (int i = 0; i < _lineSymbols.size(); i++) {
+		const SymbolRender &symbol = _lineSymbols.at(i);
+		if (symbol.rule()._zooms.contains(zoom))
+			list.append(&symbol);
+	}
+
+	return list;
+}
+
+QList<const Style::SymbolRender*> Style::symbols(int zoom) const
+{
+	QList<const SymbolRender*> list;
+
+	for (int i = 0; i < _symbols.size(); i++) {
+		const SymbolRender &symbol = _symbols.at(i);
+		if (symbol.rule()._zooms.contains(zoom))
+			list.append(&symbol);
+	}
+
+	return list;
+}
+
+QList<const Style::PathRender*> Style::paths(int zoom) const
+{
+	QList<const PathRender*> list;
+
+	for (int i = 0; i < _paths.size(); i++) {
+		const PathRender &path = _paths.at(i);
+		if (path.rule()._zooms.contains(zoom))
+			list.append(&path);
+	}
+
+	return list;
+}
+
+QList<const Style::CircleRender*> Style::circles(int zoom) const
+{
+	QList<const CircleRender*> list;
+
+	for (int i = 0; i < _circles.size(); i++) {
+		const CircleRender &circle = _circles.at(i);
+		if (circle.rule()._zooms.contains(zoom))
+			list.append(&circle);
+	}
+
+	return list;
+}
+
+QPen Style::PathRender::pen(int zoom) const
+{
+	if (!_img.isNull() || _strokeColor.isValid()) {
+		qreal factor = (_scale > None && zoom >= 12)
+		  ? pow(1.5, zoom - 12) : 1.0;
+		qreal width = factor * _strokeWidth;
+		QBrush brush = _img.isNull() ? QBrush(_strokeColor) : QBrush(_img);
+		QPen p(brush, width, Qt::SolidLine, _strokeCap, _strokeJoin);
+		if (!_strokeDasharray.isEmpty()) {
+			QVector<qreal>pattern(_strokeDasharray);
+			for (int i = 0; i < _strokeDasharray.size(); i++) {
+				if (_scale > Stroke && zoom >= 12)
+					pattern[i] *= factor;
+				// QPainter pattern is specified in units of the pens width!
+				pattern[i] /= width;
+			}
+			p.setDashPattern(pattern);
+		}
+		return p;
+	} else
+		return Qt::NoPen;
+}
+
+qreal Style::PathRender::dy(int zoom) const
+{
+	return (_dy != 0 && _scale && zoom >= 12)
+	  ? pow(1.5, zoom - 12) * _dy : _dy;
+}
+
+qreal Style::CircleRender::radius(int zoom) const
+{
+	return (_radius != 0 && _scale && zoom >= 12)
+	  ? pow(1.5, zoom - 12) * _radius : _radius;
+}
+
+QStringList Style::layers(const QString &lang, int &defaultLayer) const
+{
+	return _menu.layers(lang, defaultLayer);
+}

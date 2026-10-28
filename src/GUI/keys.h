@@ -26,13 +26,20 @@
 #define SHOW_MAP_SHORTCUT       QKeySequence(Qt::CTRL | Qt::Key_M)
 #define NEXT_MAP_SHORTCUT       QKeySequence(QKeySequence::Forward)
 #define PREV_MAP_SHORTCUT       QKeySequence(QKeySequence::Back)
+#define NEXT_TAB_SHORTCUT       QKeySequence(QKeySequence::NextChild)
+#define PREV_TAB_SHORTCUT       QKeySequence(QKeySequence::PreviousChild)
 #define SHOW_GRAPHS_SHORTCUT    QKeySequence(Qt::CTRL | Qt::Key_G)
 #define STATISTICS_SHORTCUT     QKeySequence(Qt::CTRL | Qt::Key_S)
 #define DOWNLOAD_DEM_SHORTCUT   QKeySequence(Qt::CTRL | Qt::Key_D)
 #define SHOW_TRACKS_SHORTCUT    QKeySequence(Qt::CTRL | Qt::Key_T)
+#ifdef Q_OS_MACOS
+#define SHOW_ROUTES_SHORTCUT    QKeySequence(Qt::CTRL | Qt::Key_U)
+#else
 #define SHOW_ROUTES_SHORTCUT    QKeySequence(Qt::CTRL | Qt::Key_R)
+#endif
 #define SHOW_AREAS_SHORTCUT     QKeySequence(Qt::CTRL | Qt::Key_A)
 #define SHOW_WAYPOINTS_SHORTCUT QKeySequence(Qt::CTRL | Qt::Key_P)
+#define HILLSHADING_SHORTCUT    QKeySequence(Qt::CTRL | Qt::Key_H)
 #define FULLSCREEN_SHORTCUT     (QKeySequence(QKeySequence::FullScreen).isEmpty() \
                                   ? QKeySequence(Qt::Key_F11) \
                                   : QKeySequence(QKeySequence::FullScreen))

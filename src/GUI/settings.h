@@ -87,15 +87,12 @@ public:
 #endif // Q_OS_ANDROID
 
 	/* File */
-#ifndef Q_OS_ANDROID
 	static const SettingList recentDataFiles;
-#endif // Q_OS_ANDROID
 
 	/* Map */
 	static const Setting activeMap;
 	static const Setting showMap;
 	static const Setting cursorCoordinates;
-	static const Setting layers;
 
 	/* Graph */
 	static const Setting showGraphs;
@@ -119,6 +116,7 @@ public:
 	static const Setting waypoints;
 	static const Setting areas;
 	static const Setting routeWaypoints;
+	static const Setting trackWaypoints;
 	static const Setting waypointIcons;
 	static const Setting waypointLabels;
 	static const Setting pathTicks;
@@ -126,6 +124,7 @@ public:
 	static const Setting positionMarkers;
 	static const Setting markerInfo;
 	static const Setting useStyles;
+	static const Setting videos;
 
 	/* DEM */
 	static const Setting drawHillShading;
@@ -222,6 +221,9 @@ public:
 	static const Setting outputProjection;
 	static const Setting inputProjection;
 	static const Setting hidpiMap;
+	static const Setting pathsDetail;
+	static const Setting pointsDetail;
+	static const Setting hillshadingDetail;
 	static const Setting poiPath;
 	static const Setting mapsPath;
 	static const Setting dataPath;

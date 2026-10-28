@@ -21,6 +21,9 @@
 #include "oruxmap.h"
 #include "encmap.h"
 #include "encatlas.h"
+#include "coros4map.h"
+#include "coros5map.h"
+#include "pmtilesmap.h"
 #include "invalidmap.h"
 #include "maplist.h"
 
@@ -29,36 +32,41 @@ MapList::ParserMap MapList::parsers()
 {
 	MapList::ParserMap map;
 
-	map.insert("tar", &Atlas::createTAR);
-	map.insert("tar", &OziMap::createTAR);
-	map.insert("tba", &Atlas::createTBA);
-	map.insert("xml", &MapSource::create);
-	map.insert("xml", &IMGMap::createGMAP);
-	map.insert("img", &IMGMap::createIMG);
-	map.insert("jnx", &JNXMap::create);
-	map.insert("tif", &GeoTIFFMap::create);
-	map.insert("tiff", &GeoTIFFMap::create);
-	map.insert("mbtiles", &MBTilesMap::create);
-	map.insert("rmap", &RMap::create);
-	map.insert("rtmap", &RMap::create);
-	map.insert("map", &MapsforgeMap::create);
-	map.insert("map", &OziMap::createMAP);
-	map.insert("gmi", &OziMap::createGMI);
-	map.insert("kap", &BSBMap::create);
-	map.insert("kmz", &KMZMap::create);
-	map.insert("aqm", &AQMMap::create);
-	map.insert("sqlitedb", &SqliteMap::create);
-	map.insert("wld", &WorldFileMap::create);
-	map.insert("jgw", &WorldFileMap::create);
-	map.insert("gfw", &WorldFileMap::create);
-	map.insert("pgw", &WorldFileMap::create);
-	map.insert("tfw", &WorldFileMap::create);
-	map.insert("qct", &QCTMap::create);
-	map.insert("sqlite", &OsmdroidMap::create);
-	map.insert("gemf", &GEMFMap::create);
-	map.insert("otrk2.xml", &OruxMap::create);
-	map.insert("000", &ENCMap::create);
-	map.insert("031", &ENCAtlas::create);
+	map.insert("tar", Parser("TrekBuddy TAR atlas", &Atlas::createTAR));
+	map.insert("tar", Parser("TrekBuddy TAR map", &OziMap::createTAR));
+	map.insert("tba", Parser("TrekBuddy atlas", &Atlas::createTBA));
+	map.insert("xml", Parser("Online map", &MapSource::create));
+	map.insert("xml", Parser("GARMIN GMAP map", &IMGMap::createGMAP));
+	map.insert("img", Parser("GARMIN IMG map", &IMGMap::createIMG));
+	map.insert("csm", Parser("COROS 4 map tile", &IMGMap::createIMG));
+	map.insert("jnx", Parser("GARMIN JNX map", &JNXMap::create));
+	map.insert("tif", Parser("GeoTIFF image", &GeoTIFFMap::create));
+	map.insert("tiff", Parser("GeoTIFF image", &GeoTIFFMap::create));
+	map.insert("mbtiles", Parser("MBTILES map", &MBTilesMap::create));
+	map.insert("rmap", Parser("TwoNav RMAP map", &RMap::create));
+	map.insert("rtmap", Parser("TwoNav RMAP map", &RMap::create));
+	map.insert("map", Parser("Mapsforge map", &MapsforgeMap::create));
+	map.insert("map", Parser("OziExplorer/TrekBuddy map", &OziMap::createMAP));
+	map.insert("gmi", Parser("TrekBuddy map", &OziMap::createGMI));
+	map.insert("kap", Parser("BSB nautical chart", &BSBMap::create));
+	map.insert("kmz", Parser("KML map", &KMZMap::create));
+	map.insert("aqm", Parser("AlpineQuest map", &AQMMap::create));
+	map.insert("sqlitedb", Parser("RMaps SQLite map", &SqliteMap::create));
+	map.insert("wld", Parser("World-file + image", &WorldFileMap::create));
+	map.insert("jgw", Parser("World-file + JPG", &WorldFileMap::create));
+	map.insert("gfw", Parser("World-file + GIF", &WorldFileMap::create));
+	map.insert("pgw", Parser("World-file + PNG", &WorldFileMap::create));
+	map.insert("tfw", Parser("World-file + TIFF", &WorldFileMap::create));
+	map.insert("qct", Parser("QCT map", &QCTMap::create));
+	map.insert("sqlite", Parser("Osmdroid SQLite map", &OsmdroidMap::create));
+	map.insert("gemf", Parser("GEMF map", &GEMFMap::create));
+	map.insert("otrk2.xml", Parser("Orux map", &OruxMap::create));
+	map.insert("000", Parser("ENC chart", &ENCMap::create));
+	map.insert("031", Parser("ENC atlas", &ENCAtlas::create));
+	map.insert("csa", Parser("COROS 4 map", &Coros4Map::create));
+	map.insert("pma", Parser("COROS 5 map", &Coros5Map::create));
+	map.insert("pmtiles", Parser("PMTiles map", &PMTilesMap::create));
+	map.insert("t", Parser("COROS 5 map tile", &PMTilesMap::create));
 
 	return map;
 }
@@ -67,40 +75,58 @@ MapList::ParserMap MapList::_parsers = MapList::parsers();
 
 Map *MapList::loadFile(const QString &path, const Projection &proj, bool *isDir)
 {
-	ParserMap::iterator it;
 	QFileInfo fi(Util::displayName(path));
 	QString suffix(fi.completeSuffix().toLower());
-	Map *map = 0;
-	QStringList errors;
+	QList<QPair<const char*, QString> > errors;
 
-	if ((it = _parsers.find(suffix)) != _parsers.end()) {
-		while (it != _parsers.end() && it.key() == suffix) {
-			delete map;
-			map = it.value()(path, proj, isDir);
-			if (map->isValid())
-				return map;
-			else
-				errors.append(it.key() + ": " + map->errorString());
-			++it;
-		}
-	} else {
-		for (it = _parsers.begin(); it != _parsers.end(); it++) {
-			map = it.value()(path, proj, isDir);
+	ParserMap::const_iterator it = _parsers.find(suffix);
+	if (it != _parsers.constEnd()) {
+		while (it != _parsers.constEnd() && it.key() == suffix) {
+			const Parser &p = it.value();
+
+			Map *map = p.cb(path, proj, isDir);
 			if (map->isValid())
 				return map;
 			else {
-				errors.append(it.key() + ": " + map->errorString());
+				errors.append(QPair<const char*, QString>(p.name,
+				  map->errorString()));
 				delete map;
-				map = 0;
+			}
+			++it;
+		}
+
+		QString errorString;
+		if (errors.size() == 1)
+			errorString = errors.first().second;
+		else {
+			errorString.append("\n");
+			for (int i = 0; i < errors.size(); i++)
+				errorString.append("\n" + QString(errors.at(i).first) + ": "
+				  + errors.at(i).second);
+		}
+
+		return new InvalidMap(path, errorString);
+	} else {
+		for (it = _parsers.constBegin(); it != _parsers.constEnd(); ++it) {
+			const Parser &p = it.value();
+
+			Map *map = p.cb(path, proj, isDir);
+			if (map->isValid())
+				return map;
+			else {
+				errors.append(QPair<const char*, QString>(p.name,
+				  map->errorString()));
+				delete map;
 			}
 		}
+
+		qWarning("%s:", qUtf8Printable(path));
+		for (int i = 0; i < errors.size(); i++)
+			qWarning("  %s: %s", errors.at(i).first,
+			  qUtf8Printable(errors.at(i).second));
+
+		return new InvalidMap(path, "Unknown file format");
 	}
-
-	qWarning("%s:", qUtf8Printable(path));
-	for (int i = 0; i < errors.size(); i++)
-		qWarning("  %s", qUtf8Printable(errors.at(i)));
-
-	return map ? map : new InvalidMap(path, "Unknown file format");
 }
 
 TreeNode<Map*> MapList::loadDir(const QString &path, const Projection &proj,
@@ -155,33 +181,45 @@ TreeNode<Map *> MapList::loadMaps(const QString &path, const Projection &proj)
 QString MapList::formats()
 {
 	return
-	  qApp->translate("MapList", "Supported files")
-		+ " (" + filter().join(" ") + ");;"
-	  + qApp->translate("MapList", "Electronic Navigational Charts")
-		+ " (*.000 *.031);;"
-	  + qApp->translate("MapList", "AlpineQuest maps") + " (*.aqm);;"
-	  + qApp->translate("MapList", "GEMF maps") + " (*.gemf);;"
-	  + qApp->translate("MapList", "Garmin IMG maps")
-		+ " (*.gmap *.gmapi *.img *.xml);;"
-	  + qApp->translate("MapList", "Garmin JNX maps") + " (*.jnx);;"
-	  + qApp->translate("MapList", "BSB nautical charts") + " (*.kap);;"
-	  + qApp->translate("MapList", "KMZ maps") + " (*.kmz);;"
-	  + qApp->translate("MapList", "Mapsforge maps") + " (*.map);;"
-	  + qApp->translate("MapList", "OziExplorer maps") + " (*.map);;"
-	  + qApp->translate("MapList", "MBTiles maps") + " (*.mbtiles);;"
-	  + qApp->translate("MapList", "Orux maps") + " (*.otrk2.xml);;"
-	  + qApp->translate("MapList", "QuickChart maps") + " (*.qct);;"
-	  + qApp->translate("MapList", "TwoNav maps") + " (*.rmap *.rtmap);;"
-	  + qApp->translate("MapList", "Osmdroid SQLite maps") + " (*.sqlite);;"
-	  + qApp->translate("MapList", "Locus/OsmAnd/RMaps SQLite maps")
-		+ " (*.sqlitedb);;"
-	  + qApp->translate("MapList", "TrekBuddy maps/atlases")
-		+ " (*.tar *.tba *.gmi *.map);;"
-	  + qApp->translate("MapList", "GeoTIFF images") + " (*.tif *.tiff);;"
-	  + qApp->translate("MapList", "World-file georeferenced images")
+	  QCoreApplication::translate("MapList", "Supported files")
+	    + " (" + filter().join(" ") + ");;"
+	  + QCoreApplication::translate("MapList", "Electronic Navigational Charts")
+	    + " (*.000 *.031);;"
+	  + QCoreApplication::translate("MapList", "AlpineQuest maps")
+	    + " (*.aqm);;"
+	  + QCoreApplication::translate("MapList", "COROS maps")
+	    + " (*.csa *.pma);;"
+	  + QCoreApplication::translate("MapList", "GEMF maps") + " (*.gemf);;"
+	  + QCoreApplication::translate("MapList", "Garmin IMG maps")
+	    + " (*.csm *.gmap *.gmapi *.img *.xml);;"
+	  + QCoreApplication::translate("MapList", "Garmin JNX maps") + " (*.jnx);;"
+	  + QCoreApplication::translate("MapList", "BSB nautical charts")
+	    + " (*.kap);;"
+	  + QCoreApplication::translate("MapList", "KMZ maps") + " (*.kmz);;"
+	  + QCoreApplication::translate("MapList", "Mapsforge maps") + " (*.map);;"
+	  + QCoreApplication::translate("MapList", "OziExplorer maps")
+	    + " (*.map);;"
+	  + QCoreApplication::translate("MapList", "MBTiles maps")
+	    + " (*.mbtiles);;"
+	  + QCoreApplication::translate("MapList", "Orux maps") + " (*.otrk2.xml);;"
+	  + QCoreApplication::translate("MapList", "PMTiles maps")
+	    + " (*.pmtiles *.t);;"
+	  + QCoreApplication::translate("MapList", "QuickChart maps") + " (*.qct);;"
+	  + QCoreApplication::translate("MapList", "TwoNav maps")
+	    + " (*.rmap *.rtmap);;"
+	  + QCoreApplication::translate("MapList", "Osmdroid SQLite maps")
+	    + " (*.sqlite);;"
+	  + QCoreApplication::translate("MapList", "Locus/OsmAnd/RMaps SQLite maps")
+	    + " (*.sqlitedb);;"
+	  + QCoreApplication::translate("MapList", "TrekBuddy maps/atlases")
+	    + " (*.tar *.tba *.gmi *.map);;"
+	  + QCoreApplication::translate("MapList", "GeoTIFF images")
+	    + " (*.tif *.tiff);;"
+	  + QCoreApplication::translate("MapList", "World-file georeferenced images")
 	    + " (*.wld *.jgw *.gfw *.pgw *.tfw);;"
-	  + qApp->translate("MapList", "Online map sources") + " (*.xml);;"
-	  + qApp->translate("MapList", "All files") + " (*)";
+	  + QCoreApplication::translate("MapList", "Online map sources")
+	    + " (*.xml);;"
+	  + QCoreApplication::translate("MapList", "All files") + " (*)";
 }
 
 QStringList MapList::filter()
@@ -189,7 +227,7 @@ QStringList MapList::filter()
 	QStringList filter;
 	QString last;
 
-	for (ParserMap::iterator it = _parsers.begin(); it != _parsers.end(); it++) {
+	for (ParserMap::iterator it = _parsers.begin(); it != _parsers.end(); ++it) {
 		if (it.key() != last)
 			filter << "*." + it.key();
 		last = it.key();

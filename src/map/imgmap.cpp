@@ -1,24 +1,24 @@
 #include <QFile>
 #include <QPainter>
-#include <QPixmapCache>
-#include <QtConcurrent>
-#include "common/rectc.h"
-#include "common/range.h"
+#include <QFileInfo>
+#include <QDir>
+#include <QtMath>
 #include "common/wgs84.h"
+#include "common/programpaths.h"
 #include "IMG/imgdata.h"
 #include "IMG/gmapdata.h"
-#include "IMG/rastertile.h"
 #include "IMG/demtree.h"
 #include "osm.h"
 #include "pcs.h"
 #include "rectd.h"
+#include "imgjob.h"
 #include "imgmap.h"
 
 using namespace IMG;
 
-#define EPSILON     1e-6
-#define TILE_SIZE   384
-#define DELTA       1e-3
+#define EPSILON    1e-6
+#define TILE_SIZE  384
+#define DELTA      1e-3
 
 static RectC limitBounds(const RectC &bounds, const Projection &proj)
 {
@@ -35,14 +35,15 @@ static RectC limitBounds(const RectC &bounds, const Projection &proj)
 		return bounds;
 }
 
-static QList<MapData*> overlays(const QString &fileName)
+QList<MapData*> IMGMap::overlays(const QString &fileName)
 {
 	QList<MapData*> list;
 
 	for (int i = 1; i < 32; i++) {
 		QString ol(fileName + "." + QString::number(i));
 		if (QFileInfo(ol).isFile()) {
-			MapData *data = new IMGData(ol);
+			MapData *data = new IMGData(ol, _polyCache, _pointCache, _demCache,
+			  _lock, _demLock);
 			if (data->isValid())
 				list.append(data);
 			else {
@@ -59,12 +60,14 @@ static QList<MapData*> overlays(const QString &fileName)
 
 IMGMap::IMGMap(const QString &fileName, bool GMAP, QObject *parent)
   : Map(fileName, parent), _projection(PCS::pcs(3857)), _tileRatio(1.0),
-  _valid(false)
+  _layer(All), _hillShading(false), _valid(false)
 {
 	if (GMAP)
-		_data.append(new GMAPData(fileName));
+		_data.append(new GMAPData(fileName, _polyCache, _pointCache, _demCache,
+		  _lock, _demLock));
 	else {
-		_data.append(new IMGData(fileName));
+		_data.append(new IMGData(fileName, _polyCache, _pointCache, _demCache,
+		  _lock, _demLock));
 		_data.append(overlays(fileName));
 	}
 
@@ -78,8 +81,23 @@ IMGMap::IMGMap(const QString &fileName, bool GMAP, QObject *parent)
 	_valid = true;
 }
 
+IMGMap::~IMGMap()
+{
+	qDeleteAll(_data);
+	qDeleteAll(_styles);
+}
+
+IMG::Style *IMGMap::createStyle(const IMG::MapData *data, const QString *typFile)
+{
+	if (typFile) {
+		SubFile typ(*typFile);
+		return new Style(_tileRatio, &typ);
+	} else
+		return new Style(_tileRatio, data->typ());
+}
+
 void IMGMap::load(const Projection &in, const Projection &out,
-  qreal devicelRatio, bool hidpi)
+  qreal devicelRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(hidpi);
@@ -88,12 +106,33 @@ void IMGMap::load(const Projection &in, const Projection &out,
 	_projection = out;
 	_dataBounds = limitBounds(_data.first()->bounds(), _projection);
 
+	switch (layer) {
+		case 1:
+			_layer = Vector;
+			break;
+		case 2:
+			_layer = Raster;
+			break;
+		default:
+			_layer = All;
+	}
+
+	const QString *typ = 0;
+	if (style < 0 || style >= styles().size())
+		typ = (_data.first()->typ() || styles().isEmpty())
+		  ? 0 : &(styles().first());
+	else
+		typ = &(styles().at(style));
+
+	_styles.reserve(_data.size());
 	for (int i = 0; i < _data.size(); i++)
-		_data.at(i)->load(devicelRatio);
+		_styles.append(createStyle(_data.at(i), i ? 0 : typ));
+
+	_hillShading = IMGMap::hillShading() && hillShading;
 
 	updateTransform();
 
-	QPixmapCache::clear();
+	TileCache::clear();
 }
 
 void IMGMap::unload()
@@ -102,6 +141,9 @@ void IMGMap::unload()
 
 	for (int i = 0; i < _data.size(); i++)
 		_data.at(i)->clear();
+
+	qDeleteAll(_styles);
+	_styles = QList<IMG::Style*>();
 }
 
 int IMGMap::zoomFit(const QSize &size, const RectC &rect)
@@ -173,40 +215,43 @@ void IMGMap::updateTransform()
 		_bounds.adjust(0.5, 0, -0.5, 0);
 }
 
-bool IMGMap::isRunning(const QString &key) const
+bool IMGMap::isRunning(const TileCache::Key &key) const
 {
 	for (int i = 0; i < _jobs.size(); i++) {
 		const QList<IMG::RasterTile> &tiles = _jobs.at(i)->tiles();
-		for (int j = 0; j < tiles.size(); j++)
-			if (tiles.at(j).key() == key)
+		for (int j = 0; j < tiles.size(); j++) {
+			const IMG::RasterTile &t = tiles.at(j);
+			if (TileCache::Key(t.data().first(), t.zoom(), t.xy()) == key)
 				return true;
+		}
 	}
 
 	return false;
 }
 
-void IMGMap::runJob(IMGMapJob *job)
+void IMGMap::runJob(IMGJob *job)
 {
 	_jobs.append(job);
 
-	connect(job, &IMGMapJob::finished, this, &IMGMap::jobFinished);
+	connect(job, &IMGJob::finished, this, &IMGMap::jobFinished);
 	job->run();
 }
 
-void IMGMap::removeJob(IMGMapJob *job)
+void IMGMap::removeJob(IMGJob *job)
 {
 	_jobs.removeOne(job);
 	job->deleteLater();
 }
 
-void IMGMap::jobFinished(IMGMapJob *job)
+void IMGMap::jobFinished(IMGJob *job)
 {
 	const QList<IMG::RasterTile> &tiles = job->tiles();
 
 	for (int i = 0; i < tiles.size(); i++) {
 		const IMG::RasterTile &mt = tiles.at(i);
 		if (!mt.pixmap().isNull())
-			QPixmapCache::insert(mt.key(), mt.pixmap());
+			TileCache::insert(TileCache::Key(mt.data().first(), mt.zoom(),
+			  mt.xy()), new QPixmap(mt.pixmap()));
 	}
 
 	removeJob(job);
@@ -222,32 +267,27 @@ void IMGMap::cancelJobs(bool wait)
 
 void IMGMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 {
-	QPointF tl(floor(rect.left() / TILE_SIZE)
-	  * TILE_SIZE, floor(rect.top() / TILE_SIZE) * TILE_SIZE);
+	QPoint tl(qFloor(rect.left() / TILE_SIZE)
+	  * TILE_SIZE, qFloor(rect.top() / TILE_SIZE) * TILE_SIZE);
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	int width = ceil(s.width() / TILE_SIZE);
 	int height = ceil(s.height() / TILE_SIZE);
-
 	QList<RasterTile> tiles;
 
 	for (int n = 0; n < _data.size(); n++) {
 		for (int i = 0; i < width; i++) {
 			for (int j = 0; j < height; j++) {
-				QPixmap pm;
 				QPoint ttl(tl.x() + i * TILE_SIZE, tl.y() + j * TILE_SIZE);
-				QString key(_data.at(n)->fileName() + "-" + QString::number(_zoom)
-				  + "_" + QString::number(ttl.x()) + "_" + QString::number(ttl.y()));
+				TileCache::Key key(_data.at(n), _zoom, ttl);
+				const QPixmap *pm = TileCache::object(key);
 
-				if (isRunning(key))
-					continue;
-
-				if (QPixmapCache::find(key, &pm))
-					painter->drawPixmap(ttl, pm);
-				else {
-					tiles.append(RasterTile(_projection, _transform, _data.at(n),
-					  _zoom, QRect(ttl, QSize(TILE_SIZE, TILE_SIZE)), _tileRatio,
-					  key, !n && flags & Map::HillShading, flags & Map::Rasters,
-					  flags & Map::Vectors));
+				if (pm)
+					painter->drawPixmap(ttl, *pm);
+				else if (!isRunning(key)) {
+					tiles.append(RasterTile(&_projection, _transform,
+					  _data.at(n), _styles.at(n), _zoom,
+					  QRect(ttl, QSize(TILE_SIZE, TILE_SIZE)), _tileRatio,
+					  _hillShading, _layer & Raster, _layer & Vector));
 				}
 			}
 		}
@@ -262,10 +302,11 @@ void IMGMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 				const RasterTile &mt = tiles.at(i);
 				const QPixmap &pm = mt.pixmap();
 				painter->drawPixmap(mt.xy(), pm);
-				QPixmapCache::insert(mt.key(), pm);
+				TileCache::insert(TileCache::Key(mt.data().first(), mt.zoom(),
+				  mt.xy()), new QPixmap(pm));
 			}
 		} else
-			runJob(new IMGMapJob(tiles));
+			runJob(new IMGJob(tiles));
 	}
 }
 
@@ -283,6 +324,32 @@ double IMGMap::elevation(const Coordinates &c)
 		return tree.elevation(c);
 	} else
 		return Map::elevation(c);
+}
+
+QStringList IMGMap::styles(int &defaultStyle) const
+{
+	QStringList list;
+	const MapData *d = _data.first();
+	list.reserve(styles().size() + (d->typ() ? 1 : 0));
+
+	for (int i = 0; i < styles().size(); i++)
+		list.append(QFileInfo(styles().at(i)).baseName());
+
+	if (d->typ())
+		list.append(d->name());
+
+	defaultStyle = d->typ() ? list.size() - 1 : 0;
+
+	return list;
+}
+
+QStringList IMGMap::layers(const QString &lang, int &defaultLayer) const
+{
+	Q_UNUSED(lang);
+
+	defaultLayer = 0;
+
+	return QStringList() << tr("All") << tr("Vector only") << tr("Raster only");
 }
 
 Map* IMGMap::createIMG(const QString &path, const Projection &proj, bool *isDir)
@@ -303,4 +370,32 @@ Map* IMGMap::createGMAP(const QString &path, const Projection &proj, bool *isDir
 		*isDir = true;
 
 	return new IMGMap(path, true);
+}
+
+IMGMap::StyleList::StyleList()
+{
+	QString path(ProgramPaths::styleDir());
+	if (path.isEmpty())
+		return;
+
+	QDir dir(path);
+	QFileInfoList styles(dir.entryInfoList(QStringList("*.typ"), QDir::Files));
+
+	for (int i = 0; i < styles.size(); i++)
+		append(styles.at(i).absoluteFilePath());
+}
+
+IMGMap::StyleList &IMGMap::styles()
+{
+	static StyleList list;
+	return list;
+}
+
+bool IMGMap::hillShading() const
+{
+	for (int i = 0; i < _data.size(); i++)
+		if (_data.at(i)->hasDEM())
+			return true;
+
+	return false;
 }

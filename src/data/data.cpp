@@ -1,6 +1,9 @@
 #include <QApplication>
 #include <QFile>
 #include <QFileInfo>
+#ifdef Q_OS_ANDROID
+#include <QtCore/private/qandroidextras_p.h>
+#endif // Q_OS_ANDROID
 #include "common/util.h"
 #include "map/crs.h"
 #include "gpxparser.h"
@@ -26,8 +29,11 @@
 #include "txtparser.h"
 #include "vtkparser.h"
 #include "vkxparser.h"
+#include "mp4parser.h"
+#include "srtparser.h"
 #include "data.h"
 
+#define PERMISSION "android.permission.ACCESS_MEDIA_LOCATION"
 
 static GPXParser gpx;
 static TCXParser tcx;
@@ -55,6 +61,8 @@ static GPSDumpParser gpsdump;
 static TXTParser txt;
 static VTKParser vtk;
 static VKXParser vkx;
+static MP4Parser mp4;
+static SRTParser srt;
 
 static QMultiMap<QString, Parser*> parsers()
 {
@@ -91,13 +99,21 @@ static QMultiMap<QString, Parser*> parsers()
 	map.insert("txt", &txt);
 	map.insert("vtk", &vtk);
 	map.insert("vkx", &vkx);
+	map.insert("mp4", &mp4);
+	map.insert("mov", &mp4);
+	map.insert("raw", &mp4);
+	map.insert("srt", &srt);
 
 	return map;
 }
 
 QMultiMap<QString, Parser*> Data::_parsers = parsers();
+#ifdef Q_OS_ANDROID
+bool Data::_permChecked = false;
+#endif // Q_OS_ANDROID
 
-void Data::processData(QList<TrackData> &trackData, QList<RouteData> &routeData)
+void Data::processData(const QList<TrackData> &trackData,
+  const QList<RouteData> &routeData)
 {
 	for (int i = 0; i < trackData.count(); i++)
 		_tracks.append(Track(trackData.at(i)));
@@ -105,15 +121,37 @@ void Data::processData(QList<TrackData> &trackData, QList<RouteData> &routeData)
 		_routes.append(Route(routeData.at(i)));
 }
 
+#ifdef Q_OS_ANDROID
+static bool isMedia(const QString &suffix)
+{
+	return (suffix == "jpg" || suffix == "jpeg" || suffix == "mp4"
+	  || suffix == "mov");
+}
+#endif // Q_OS_ANDROID
+
 Data::Data(const QString &fileName, bool tryUnknown)
 {
 	QFile file(fileName);
 	QFileInfo fi(Util::displayName(fileName));
+	QString suffix(fi.suffix().toLower());
 	QList<TrackData> trackData;
 	QList<RouteData> routeData;
 
 	_valid = false;
 	_errorLine = 0;
+
+#ifdef Q_OS_ANDROID
+	if (!_permChecked && isMedia(suffix)) {
+		QFuture<QtAndroidPrivate::PermissionResult> res;
+		res = QtAndroidPrivate::checkPermission(PERMISSION);
+		if (res.result() != QtAndroidPrivate::Authorized) {
+			res = QtAndroidPrivate::requestPermission(PERMISSION);
+			if (res.result() != QtAndroidPrivate::Authorized)
+				qWarning("Error getting ACCESS_MEDIA_LOCATION permissions");
+		}
+		_permChecked = true;
+	}
+#endif // Q_OS_ANDROID
 
 	if (!file.open(QFile::ReadOnly)) {
 		_errorString = file.errorString();
@@ -121,7 +159,6 @@ Data::Data(const QString &fileName, bool tryUnknown)
 	}
 
 	QMultiMap<QString, Parser*>::iterator it;
-	QString suffix(fi.suffix().toLower());
 	if ((it = _parsers.find(suffix)) != _parsers.end()) {
 		while (it != _parsers.end() && it.key() == suffix) {
 			if (it.value()->parse(&file, trackData, routeData, _polygons,
@@ -139,12 +176,12 @@ Data::Data(const QString &fileName, bool tryUnknown)
 
 		qWarning("%s:", qUtf8Printable(fileName));
 		for (it = _parsers.find(suffix); it != _parsers.end()
-		  && it.key() == suffix; it++)
+		  && it.key() == suffix; ++it)
 			qWarning("  %s: line %d: %s", qUtf8Printable(it.key()),
 			  it.value()->errorLine(), qUtf8Printable(it.value()->errorString()));
 
 	} else if (tryUnknown) {
-		for (it = _parsers.begin(); it != _parsers.end(); it++) {
+		for (it = _parsers.begin(); it != _parsers.end(); ++it) {
 			if (it.value()->parse(&file, trackData, routeData, _polygons,
 			  _waypoints)) {
 				processData(trackData, routeData);
@@ -155,7 +192,7 @@ Data::Data(const QString &fileName, bool tryUnknown)
 		}
 
 		qWarning("%s:", qUtf8Printable(fileName));
-		for (it = _parsers.begin(); it != _parsers.end(); it++)
+		for (it = _parsers.begin(); it != _parsers.end(); ++it)
 			qWarning("  %s: line %d: %s", qUtf8Printable(it.key()),
 			  it.value()->errorLine(), qUtf8Printable(it.value()->errorString()));
 
@@ -170,6 +207,7 @@ Data::Data(const QUrl &url)
 	Projection proj(GCS::WGS84());
 
 	_valid = false;
+	_errorLine = 0;
 
 	QStringList parts(url.path().split(';'));
 	if (parts.size() < 1) {
@@ -231,31 +269,38 @@ Data::Data(const QUrl &url)
 QString Data::formats()
 {
 	return
-	  qApp->translate("Data", "Supported files") + " (" + filter().join(" ") + ");;"
-	  + qApp->translate("Data", "CSV files") + " (*.csv);;"
-	  + qApp->translate("Data", "CUP files") + " (*.cup);;"
-	  + qApp->translate("Data", "FIT files") + " (*.fit);;"
-	  + qApp->translate("Data", "GeoJSON files") + " (*.geojson *.json);;"
-	  + qApp->translate("Data", "GPI files") + " (*.gpi);;"
-	  + qApp->translate("Data", "GPX files") + " (*.gpx);;"
-	  + qApp->translate("Data", "IGC files") + " (*.igc);;"
-	  + qApp->translate("Data", "ITN files") + " (*.itn);;"
-	  + qApp->translate("Data", "JPEG images") + " (*.jpg *.jpeg);;"
-	  + qApp->translate("Data", "KML files") + " (*.kml *.kmz);;"
-	  + qApp->translate("Data", "LOC files") + " (*.loc);;"
-	  + qApp->translate("Data", "NMEA files") + " (*.nmea);;"
-	  + qApp->translate("Data", "ONmove files") + " (*.omd *.ghp);;"
-	  + qApp->translate("Data", "OV2 files") + " (*.ov2);;"
-	  + qApp->translate("Data", "OziExplorer files") + " (*.plt *.rte *.wpt);;"
-	  + qApp->translate("Data", "SLF files") + " (*.slf);;"
-	  + qApp->translate("Data", "SML files") + " (*.sml);;"
-	  + qApp->translate("Data", "TCX files") + " (*.tcx);;"
-	  + qApp->translate("Data", "70mai GPS log files") + " (*.txt);;"
-	  + qApp->translate("Data", "VKX files") + " (*.vkx);;"
-	  + qApp->translate("Data", "VTK files") + " (*.vtk);;"
-	  + qApp->translate("Data", "TwoNav files") + " (*.rte *.trk *.wpt);;"
-	  + qApp->translate("Data", "GPSDump files") + " (*.wpt);;"
-	  + qApp->translate("Data", "All files") + " (*)";
+	  QCoreApplication::translate("Data", "Supported files")
+	    + " (" + filter().join(" ") + ");;"
+	  + QCoreApplication::translate("Data", "CSV files") + " (*.csv);;"
+	  + QCoreApplication::translate("Data", "CUP files") + " (*.cup);;"
+	  + QCoreApplication::translate("Data", "FIT files") + " (*.fit);;"
+	  + QCoreApplication::translate("Data", "GeoJSON files")
+	    + " (*.geojson *.json);;"
+	  + QCoreApplication::translate("Data", "GPI files") + " (*.gpi);;"
+	  + QCoreApplication::translate("Data", "GPX files") + " (*.gpx);;"
+	  + QCoreApplication::translate("Data", "IGC files") + " (*.igc);;"
+	  + QCoreApplication::translate("Data", "ITN files") + " (*.itn);;"
+	  + QCoreApplication::translate("Data", "JPEG images") + " (*.jpg *.jpeg);;"
+	  + QCoreApplication::translate("Data", "KML files") + " (*.kml *.kmz);;"
+	  + QCoreApplication::translate("Data", "LOC files") + " (*.loc);;"
+	  + QCoreApplication::translate("Data", "MP4 videos") + " (*.mp4 *.mov);;"
+	  + QCoreApplication::translate("Data", "NMEA files") + " (*.nmea);;"
+	  + QCoreApplication::translate("Data", "ONmove files") + " (*.omd *.ghp);;"
+	  + QCoreApplication::translate("Data", "OV2 files") + " (*.ov2);;"
+	  + QCoreApplication::translate("Data", "OziExplorer files")
+	    + " (*.plt *.rte *.wpt);;"
+	  + QCoreApplication::translate("Data", "GPMF files") + " (*.raw);;"
+	  + QCoreApplication::translate("Data", "SLF files") + " (*.slf);;"
+	  + QCoreApplication::translate("Data", "SML files") + " (*.sml);;"
+	  + QCoreApplication::translate("Data", "DJI SRT files") + " (*.srt);;"
+	  + QCoreApplication::translate("Data", "TCX files") + " (*.tcx);;"
+	  + QCoreApplication::translate("Data", "70mai GPS log files") + " (*.txt);;"
+	  + QCoreApplication::translate("Data", "VKX files") + " (*.vkx);;"
+	  + QCoreApplication::translate("Data", "VTK files") + " (*.vtk);;"
+	  + QCoreApplication::translate("Data", "TwoNav files")
+	    + " (*.rte *.trk *.wpt);;"
+	  + QCoreApplication::translate("Data", "GPSDump files") + " (*.wpt);;"
+	  + QCoreApplication::translate("Data", "All files") + " (*)";
 }
 
 QStringList Data::filter()
@@ -264,7 +309,7 @@ QStringList Data::filter()
 	QString last;
 
 	for (QMultiMap<QString, Parser*>::iterator it = _parsers.begin();
-	  it != _parsers.end(); it++) {
+	  it != _parsers.end(); ++it) {
 		if (it.key() != last)
 			filter << "*." + it.key();
 		last = it.key();

@@ -41,7 +41,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -72,6 +72,8 @@ private:
 	bool setTileInfo(const QStringList &tiles, const QString &path = QString());
 	bool setImageInfo(const QString &path);
 
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &tp) const;
 	void drawTiled(QPainter *painter, const QRectF &rect) const;
 	void drawOZF(QPainter *painter, const QRectF &rect) const;
 	void drawImage(QPainter *painter, const QRectF &rect, Flags flags) const;
@@ -79,8 +81,8 @@ private:
 	void rescale(int zoom);
 	void computeTransform();
 
-	static QString calibrationFile(const QStringList &files, const QString path,
-	  CalibrationType &type);
+	static QString calibrationFile(const QStringList &files,
+	  const QString &path, CalibrationType &type);
 
 	QString _name;
 	Projection _projection;

@@ -1,48 +1,14 @@
 #ifndef IMGMAP_H
 #define IMGMAP_H
 
-#include <QtConcurrent>
+#include "IMG/mapdata_img.h"
 #include "map.h"
 #include "projection.h"
 #include "transform.h"
-#include "IMG/mapdata.h"
-#include "IMG/rastertile.h"
+#include "tilecache.h"
 
-
-class IMGMapJob : public QObject
-{
-	Q_OBJECT
-
-public:
-	IMGMapJob(const QList<IMG::RasterTile> &tiles)
-	  : _tiles(tiles) {}
-
-	void run()
-	{
-		connect(&_watcher, &QFutureWatcher<void>::finished, this,
-		  &IMGMapJob::handleFinished);
-		_future = QtConcurrent::map(_tiles, &IMG::RasterTile::render);
-		_watcher.setFuture(_future);
-	}
-	void cancel(bool wait)
-	{
-		_future.cancel();
-		if (wait)
-			_future.waitForFinished();
-	}
-	const QList<IMG::RasterTile> &tiles() const {return _tiles;}
-
-signals:
-	void finished(IMGMapJob *job);
-
-private slots:
-	void handleFinished() {emit finished(this);}
-
-private:
-	QFutureWatcher<void> _watcher;
-	QFuture<void> _future;
-	QList<IMG::RasterTile> _tiles;
-};
+class IMGJob;
+namespace IMG {class Style;}
 
 class IMGMap : public Map
 {
@@ -50,7 +16,7 @@ class IMGMap : public Map
 
 public:
 	IMGMap(const QString &fileName, bool GMAP, QObject *parent = 0);
-	~IMGMap() {qDeleteAll(_data);}
+	~IMGMap();
 
 	QString name() const {return _data.first()->name();}
 
@@ -71,10 +37,14 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal devicelRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	double elevation(const Coordinates &c);
+
+	QStringList styles(int &defaultStyle) const;
+	QStringList layers(const QString &lang, int &defaultLayer) const;
+	bool hillShading() const;
 
 	bool isValid() const {return _valid;}
 	QString errorString() const {return _errorString;}
@@ -85,25 +55,49 @@ public:
 	  bool *isDir);
 
 private slots:
-	void jobFinished(IMGMapJob *job);
+	void jobFinished(IMGJob *job);
 
 private:
+	enum Layer {
+		Vector = 1,
+		Raster = 2,
+		All = 3
+	};
+
+	class StyleList : public QStringList
+	{
+	public:
+		StyleList();
+	};
+
 	Transform transform(int zoom) const;
 	void updateTransform();
-	bool isRunning(const QString &key) const;
-	void runJob(IMGMapJob *job);
-	void removeJob(IMGMapJob *job);
+	bool isRunning(const TileCache::Key &key) const;
+	void runJob(IMGJob *job);
+	void removeJob(IMGJob *job);
 	void cancelJobs(bool wait);
 
-	QList<IMG::MapData *> _data;
+	QList<IMG::MapData*> overlays(const QString &fileName);
+	IMG::Style *createStyle(const IMG::MapData *data, const QString *typFile);
+
+	static StyleList &styles();
+
+	QList<IMG::MapData*> _data;
+	QList<IMG::Style*> _styles;
+	IMG::MapData::PolyCache _polyCache;
+	IMG::MapData::PointCache _pointCache;
+	IMG::MapData::ElevationCache _demCache;
+	QMutex _lock, _demLock;
 	int _zoom;
 	Projection _projection;
 	Transform _transform;
 	QRectF _bounds;
 	RectC _dataBounds;
 	qreal _tileRatio;
+	Layer _layer;
+	bool _hillShading;
 
-	QList<IMGMapJob*> _jobs;
+	QList<IMGJob*> _jobs;
 
 	bool _valid;
 	QString _errorString;

@@ -1,9 +1,11 @@
 #include <QPainter>
-#include <QPixmapCache>
+#include <QDir>
 #include "common/wgs84.h"
 #include "common/util.h"
+#include "common/programpaths.h"
 #include "rectd.h"
 #include "pcs.h"
+#include "tilecache.h"
 #include "mapsforgemap.h"
 
 
@@ -12,15 +14,20 @@ using namespace Mapsforge;
 #define EPSILON     1e-6
 
 MapsforgeMap::MapsforgeMap(const QString &fileName, QObject *parent)
-  : Map(fileName, parent), _data(fileName), _zoom(0),
-  _projection(PCS::pcs(3857)), _tileRatio(1.0)
+  : Map(fileName, parent), _data(fileName), _style(0), _zoom(0),
+  _projection(PCS::pcs(3857)), _tileRatio(1.0), _hillShading(false)
 {
 	if (_data.isValid())
 		_zoom = _data.zooms().min();
 }
 
+MapsforgeMap::~MapsforgeMap()
+{
+	delete _style;
+}
+
 void MapsforgeMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(hidpi);
@@ -29,11 +36,19 @@ void MapsforgeMap::load(const Projection &in, const Projection &out,
 	_projection = out;
 
 	_data.load();
-	_style.load(_data, _tileRatio);
+
+	if (style >= 0 && style < styles().size())
+		_style = new Style(styles().at(style), _data, _tileRatio, layer);
+	else if (styles().size())
+		_style = new Style(styles().first(), _data, _tileRatio, layer);
+	else
+		_style = new Style();
+
+	_hillShading = MapsforgeMap::hillShading() && hillShading;
 
 	updateTransform();
 
-	QPixmapCache::clear();
+	TileCache::clear();
 }
 
 void MapsforgeMap::unload()
@@ -41,7 +56,8 @@ void MapsforgeMap::unload()
 	cancelJobs(true);
 
 	_data.clear();
-	_style.clear();
+	delete _style;
+	_style = 0;
 }
 
 int MapsforgeMap::zoomFit(const QSize &size, const RectC &rect)
@@ -154,7 +170,8 @@ void MapsforgeMap::jobFinished(MapsforgeMapJob *job)
 	for (int i = 0; i < tiles.size(); i++) {
 		const Mapsforge::RasterTile &mt = tiles.at(i);
 		if (!mt.pixmap().isNull())
-			QPixmapCache::insert(key(mt.zoom(), mt.xy()), mt.pixmap());
+			TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+			  new QPixmap(mt.pixmap()));
 	}
 
 	removeJob(job);
@@ -176,22 +193,20 @@ void MapsforgeMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	int width = ceil(s.width() / tileSize);
 	int height = ceil(s.height() / tileSize);
-
 	QList<RasterTile> tiles;
 
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
 			QPoint ttl(tl.x() + i * tileSize, tl.y() + j * tileSize);
-			if (isRunning(_zoom, ttl))
-				continue;
+			TileCache::Key key(this, _zoom, ttl);
+			const QPixmap *pm = TileCache::object(key);
 
-			QPixmap pm;
-			if (QPixmapCache::find(key(_zoom, ttl), &pm))
-				painter->drawPixmap(ttl, pm);
-			else {
-				tiles.append(RasterTile(_projection, _transform, &_style, &_data,
-				  _zoom, QRect(ttl, QSize(tileSize, tileSize)), _tileRatio,
-				  flags & Map::HillShading));
+			if (pm)
+				painter->drawPixmap(ttl, *pm);
+			else if (!isRunning(_zoom, ttl)) {
+				tiles.append(RasterTile(&_projection, _transform, _style,
+				  &_data, _zoom, QRect(ttl, QSize(tileSize, tileSize)),
+				  _tileRatio, _hillShading));
 			}
 		}
 	}
@@ -205,11 +220,35 @@ void MapsforgeMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 				const RasterTile &mt = tiles.at(i);
 				const QPixmap &pm = mt.pixmap();
 				painter->drawPixmap(mt.xy(), pm);
-				QPixmapCache::insert(key(mt.zoom(), mt.xy()), pm);
+				TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+				  new QPixmap(pm));
 			}
 		} else
 			runJob(new MapsforgeMapJob(tiles));
 	}
+}
+
+QStringList MapsforgeMap::styles(int &defaultStyle) const
+{
+	QStringList list;
+	list.reserve(styles().size());
+
+	for (int i = 0; i < styles().size(); i++)
+		list.append(QFileInfo(styles().at(i)).baseName());
+
+	defaultStyle = 0;
+
+	return list;
+}
+
+QStringList MapsforgeMap::layers(const QString &lang, int &defaultLayer) const
+{
+	return _style->layers(lang, defaultLayer);
+}
+
+bool MapsforgeMap::hillShading() const
+{
+	return _style->hasHillShading();
 }
 
 Map *MapsforgeMap::create(const QString &path, const Projection &proj,
@@ -221,4 +260,29 @@ Map *MapsforgeMap::create(const QString &path, const Projection &proj,
 		*isMap = false;
 
 	return new MapsforgeMap(path);
+}
+
+MapsforgeMap::StyleList::StyleList()
+{
+	QString path(ProgramPaths::styleDir());
+	if (!path.isEmpty()) {
+		QDir dir(path);
+		QFileInfoList styles(dir.entryInfoList(QDir::Dirs
+		  | QDir::NoDotAndDotDot));
+
+		for (int i = 0; i < styles.size(); i++) {
+			QDir d(styles.at(i).absoluteFilePath());
+			QFileInfoList files(d.entryInfoList(QStringList("*.xml"),
+			  QDir::Files));
+
+			for (int j = 0; j < files.size(); j++)
+				append(files.at(j).absoluteFilePath());
+		}
+	}
+}
+
+MapsforgeMap::StyleList &MapsforgeMap::styles()
+{
+	static StyleList list;
+	return list;
 }

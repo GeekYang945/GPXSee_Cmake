@@ -1,9 +1,9 @@
 #include <cstring>
 #include <QDataStream>
-#include <QPixmapCache>
 #include <QPainter>
 #include "common/util.h"
 #include "common/color.h"
+#include "tilecache.h"
 #include "qctmap.h"
 
 #define TILE_SIZE 64
@@ -94,7 +94,6 @@ static bool huffman(QDataStream &stream, quint8 tileData[TILE_PIXELS])
 
 		const quint8 *tp = table.constData();
 		int bitsLeft = 8;
-		int bitVal;
 		quint8 val;
 
 		stream >> val;
@@ -104,7 +103,7 @@ static bool huffman(QDataStream &stream, quint8 tileData[TILE_PIXELS])
 				tileData[pixelnum++] = *tp;
 				tp = table.constData();
 			} else {
-				bitVal = (val & 1);
+				int bitVal = (val & 1);
 
 				val >>= 1;
 				bitsLeft--;
@@ -142,11 +141,11 @@ static bool pixelPacking(QDataStream &stream, quint8 tileData[TILE_PIXELS],
 		stream >> paletteIndex[i];
 
 	for (int pixelnum = 0; pixelnum < TILE_PIXELS; ) {
-		quint32 colour, val;
+		quint32 val;
 		stream >> val;
 
 		for (int runs = 0; runs < wordSize; runs++) {
-			colour = val & mask;
+			quint32 colour = val & mask;
 			val = val >> shift;
 			tileData[pixelnum++] = paletteIndex[colour];
 		}
@@ -355,10 +354,13 @@ QCTMap::QCTMap(const QString &fileName, QObject *parent)
 }
 
 void QCTMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 	if (!_file.open(QIODevice::ReadOnly))
@@ -415,9 +417,9 @@ Coordinates QCTMap::xy2ll(const QPointF &p)
 	return Coordinates(lon + _shiftE, lat + _shiftN);
 }
 
-QPixmap QCTMap::tile(int x, int y)
+QPixmap *QCTMap::tile(const QPoint &xy)
 {
-	static quint8 rowSeq[] = {
+	static const quint8 rowSeq[] = {
 		 0, 32, 16, 48,  8, 40, 24, 56,  4, 36, 20, 52, 12, 44, 28, 60,
 		 2, 34, 18, 50, 10, 42, 26, 58,  6, 38, 22, 54, 14, 46, 30, 62,
 		 1, 33, 17, 49,  9, 41, 25, 57,  5, 37, 21, 53, 13, 45, 29, 61,
@@ -428,15 +430,15 @@ QPixmap QCTMap::tile(int x, int y)
 	bool ret;
 
 
-	if (!_file.seek(_index.at(y * _cols + x)))
-		return QPixmap();
+	if (!_file.seek(_index.at(xy.y() * _cols + xy.x())))
+		return 0;
 
 	QDataStream stream(&_file);
 	stream.setByteOrder(QDataStream::LittleEndian);
 
 	stream >> packing;
 	if (stream.status() != QDataStream::Ok)
-		return QPixmap();
+		return 0;
 
 	if (packing == 0 || packing == 255)
 		ret = huffman(stream, tileData);
@@ -446,7 +448,7 @@ QPixmap QCTMap::tile(int x, int y)
 		ret = rle(stream, tileData, packing);
 
 	if (!ret)
-		return QPixmap();
+		return 0;
 
 	for (int i = 0; i < TILE_SIZE; i++)
 		memcpy(imgData + i * TILE_SIZE, tileData + rowSeq[i] * TILE_SIZE,
@@ -456,7 +458,7 @@ QPixmap QCTMap::tile(int x, int y)
 	  QImage::Format_Indexed8);
 	img.setColorTable(_palette);
 
-	return QPixmap::fromImage(img);
+	return new QPixmap(QPixmap::fromImage(img));
 }
 
 void QCTMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
@@ -470,27 +472,33 @@ void QCTMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	for (int i = 0; i < ceil(s.width() / ts.width()); i++) {
 		for (int j = 0; j < ceil(s.height() / ts.height()); j++) {
-			int x = round(tl.x() * _mapRatio + i * TILE_SIZE) / TILE_SIZE;
-			int y = round(tl.y() * _mapRatio + j * TILE_SIZE) / TILE_SIZE;
+			QPoint xy(round(tl.x() * _mapRatio + i * TILE_SIZE) / TILE_SIZE,
+			  round(tl.y() * _mapRatio + j * TILE_SIZE) / TILE_SIZE);
+			QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());
+			TileCache::Key key(this, 0, xy);
 
-			QPixmap pixmap;
-			QString key = path() + "/" + QString::number(x) + "_"
-			  + QString::number(y);
-			if (!QPixmapCache::find(key, &pixmap)) {
-				pixmap = tile(x, y);
-				if (!pixmap.isNull())
-					QPixmapCache::insert(key, pixmap);
-			}
-
-			if (pixmap.isNull())
-				qWarning("%s: error loading tile image", qUtf8Printable(key));
-			else {
-				pixmap.setDevicePixelRatio(_mapRatio);
-				QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());
-				painter->drawPixmap(tp, pixmap);
-			}
+			QPixmap *pm = TileCache::object(key);
+			if (!pm) {
+				pm = tile(xy);
+				if (pm) {
+					drawTile(painter, pm, tp);
+					TileCache::insert(key, pm);
+				}
+			} else
+				drawTile(painter, pm, tp);
 		}
 	}
+}
+
+void QCTMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
+{
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 Map *QCTMap::create(const QString &path, const Projection &proj, bool *isDir)

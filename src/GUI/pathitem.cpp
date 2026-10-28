@@ -1,5 +1,4 @@
 #include <cmath>
-#include <QCursor>
 #include <QPainter>
 #include <QGraphicsSceneMouseEvent>
 #include "common/greatcircle.h"
@@ -8,9 +7,13 @@
 #include "popup.h"
 #include "graphitem.h"
 #include "markeritem.h"
+#include "videoitem.h"
 #include "pathitem.h"
 
 #define GEOGRAPHICAL_MILE 1855.3248
+
+#define VIDEO_SIZE QSize(320, 180)
+#define VIDEO_OFFSET QPoint(6, -12)
 
 Units PathItem::_units = Metric;
 QTimeZone PathItem::_timeZone = QTimeZone::utc();
@@ -26,7 +29,7 @@ static inline unsigned segments(qreal distance)
 }
 
 PathItem::PathItem(const Path &path, Map *map, QGraphicsItem *parent)
-  : GraphicsItem(parent), _path(path), _map(map), _graph(0)
+  : GraphicsItem(parent), _path(path), _map(map), _graph(0), _video(0)
 {
 	Q_ASSERT(_path.isValid());
 
@@ -35,7 +38,9 @@ PathItem::PathItem(const Path &path, Map *map, QGraphicsItem *parent)
 	_color = Qt::black;
 	_penStyle = Qt::SolidLine;
 	_showMarker = true;
+	_showVideo = false;
 	_showTicks = false;
+	_showPoints = false;
 	_markerInfoType = MarkerInfoItem::None;
 
 	_pen = QPen(color(), width());
@@ -58,7 +63,11 @@ PathItem::PathItem(const Path &path, Map *map, QGraphicsItem *parent)
 void PathItem::updateShape()
 {
 	QPainterPathStroker s;
+#ifdef Q_OS_ANDROID
+	s.setWidth((_width + 10) * pow(2, -_digitalZoom));
+#else // Q_OS_ANDROID
 	s.setWidth((_width + 1) * pow(2, -_digitalZoom));
+#endif // Q_OS_ANDROID
 	_shape = s.createStroke(_painterPath);
 }
 
@@ -135,13 +144,26 @@ void PathItem::updatePainterPath()
 }
 
 void PathItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
-	  QWidget *widget)
+  QWidget *widget)
 {
 	Q_UNUSED(option);
 	Q_UNUSED(widget);
 
-	painter->setPen(_pen);
-	painter->drawPath(_painterPath);
+	if (_showPoints) {
+		QPen lp(_pen);
+		lp.setColor(_pen.color().lighter());
+		painter->setPen(lp);
+		painter->drawPath(_painterPath);
+
+		painter->setPen(Qt::NoPen);
+		painter->setBrush(_pen.color());
+		for (int i = 0; i < _painterPath.elementCount(); i++)
+			painter->drawEllipse(_painterPath.elementAt(i), _width / 2,
+			  _width / 2);
+	} else {
+		painter->setPen(_pen);
+		painter->drawPath(_painterPath);
+	}
 
 /*
 	painter->setPen(Qt::red);
@@ -340,6 +362,15 @@ void PathItem::setMarkerPosition(qreal pos)
 		_marker->setVisible(_showMarker);
 		_marker->setPos(pp);
 		setMarkerInfo(pos);
+
+		if (_video) {
+			qreal time = _graph
+			  ? (_graph->graphType() == Distance)
+				? _graph->timeAtDistance(pos) : pos
+			  : NAN;
+			if (!std::isnan(time))
+				_video->seek(time, _graph->duration());
+		}
 	} else
 		_marker->setVisible(false);
 }
@@ -414,6 +445,7 @@ void PathItem::showMarker(bool show)
 
 	_showMarker = show;
 	updateMarkerInfo();
+	enableVideo(show && _showVideo);
 	_marker->setVisible(show && isValid(position(_markerDistance)));
 }
 
@@ -427,7 +459,26 @@ void PathItem::showMarkerInfo(MarkerInfoItem::Type type)
 	_markerInfo->setVisible(type > MarkerInfoItem::None);
 }
 
-qreal PathItem::xInM() const
+void PathItem::showVideo(bool show)
+{
+	if (_showVideo == show)
+		return;
+
+	enableVideo(show && _showMarker);
+
+	_showVideo = show;
+}
+
+void PathItem::showPoints(bool show)
+{
+	if (_showPoints == show)
+		return;
+
+	_showPoints = show;
+	update();
+}
+
+qreal PathItem::xInM()
 {
 	return (_units == Nautical) ? NMIINM : (_units == Imperial) ? MIINM : KMINM;
 }
@@ -529,9 +580,31 @@ void PathItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 
 void PathItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-	GraphicsScene *gs = dynamic_cast<GraphicsScene *>(scene());
+	const GraphicsScene *gs = dynamic_cast<GraphicsScene*>(scene());
 	if (gs)
 		Popup::show(event->screenPos(), info(gs->showExtendedInfo()),
 		  event->widget());
-	GraphicsItem::mousePressEvent(event);
+
+	event->accept();
+}
+
+void PathItem::enableVideo(bool enable)
+{
+	if (enable) {
+		if (!_video) {
+			_video = new VideoItem(_file, _marker);
+			_video->setSize(VIDEO_SIZE);
+			_video->setZValue(-1);
+			_video->setPos(VIDEO_OFFSET);
+
+			qreal time = _graph ? _graph->timeAtDistance(_markerDistance) : NAN;
+			if (!std::isnan(time))
+				_video->seek(time, _graph->duration());
+		}
+	} else {
+		if (_video) {
+			_video->deleteLater();
+			_video = 0;
+		}
+	}
 }

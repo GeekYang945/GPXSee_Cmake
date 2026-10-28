@@ -1,12 +1,39 @@
 #include <QtEndian>
 #include <QPainter>
 #include <QFileInfo>
-#include <QPixmapCache>
 #include "rectd.h"
+#include "tilecache.h"
 #include "jnxmap.h"
 
-
 #define ic2dc(x) ((x) * 180.0 / 0x7FFFFFFF)
+
+static QPixmap *pixmap(QFile *file, quint32 offset, quint32 size)
+{
+	QByteArray ba;
+	ba.resize(size + 2);
+	ba[0] = (char)0xFF;
+	ba[1] = (char)0xD8;
+	char *data = ba.data() + 2;
+
+	if (!file->seek(offset))
+		return 0;
+	if (!file->read(data, size))
+		return 0;
+
+	QImage img(QImage::fromData(ba));
+	return img.isNull() ? 0 : new QPixmap(QPixmap::fromImage(img));
+}
+
+static void drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp, qreal ratio)
+{
+	if (ratio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(ratio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
+}
 
 template<class T> bool JNXMap::readValue(T &val)
 {
@@ -85,23 +112,23 @@ bool JNXMap::readTiles()
 
 		z->tiles = QVector<Tile>(z->level.count);
 		for (quint32 j = 0; j < z->level.count; j++) {
+			qint32 top, right, bottom, left;
+			quint16 width, height;
 			Tile &tile = z->tiles[j];
 
-			if (!(readValue(tile.top) && readValue(tile.right)
-			  && readValue(tile.bottom) && readValue(tile.left)
-			  && readValue(tile.width) && readValue(tile.height)
+			if (!(readValue(top) && readValue(right) && readValue(bottom)
+			  && readValue(left) && readValue(width) && readValue(height)
 			  && readValue(tile.size) && readValue(tile.offset)))
 				return false;
 
-			RectC llrect(Coordinates(ic2dc(tile.left), ic2dc(tile.top)),
-			  Coordinates(ic2dc(tile.right), ic2dc(tile.bottom)));
+			RectC llrect(Coordinates(ic2dc(left), ic2dc(top)),
+			  Coordinates(ic2dc(right), ic2dc(bottom)));
 			RectD rect(_projection.ll2xy(llrect.topLeft()),
 			  _projection.ll2xy(llrect.bottomRight()));
 
 			if (j == 0) {
 				ReferencePoint tl(PointD(0, 0), rect.topLeft());
-				ReferencePoint br(PointD(tile.width, tile.height),
-				  rect.bottomRight());
+				ReferencePoint br(PointD(width, height), rect.bottomRight());
 				z->transform = Transform(tl, br);
 			}
 
@@ -155,9 +182,12 @@ JNXMap::~JNXMap()
 }
 
 void JNXMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(layer);
+	Q_UNUSED(style);
 
 	_projection = in;
 	_mapRatio = hidpi ? deviceRatio : 1.0;
@@ -224,37 +254,20 @@ int JNXMap::zoomOut()
 	return _zoom;
 }
 
-QPixmap JNXMap::pixmap(const Tile *tile, QFile *file)
-{
-	QPixmap pm;
-
-	QString key = file->fileName() + "-" + QString::number(tile->offset);
-	if (!QPixmapCache::find(key, &pm)) {
-		QByteArray ba;
-		ba.resize(tile->size + 2);
-		ba[0] = (char)0xFF;
-		ba[1] = (char)0xD8;
-		char *data = ba.data() + 2;
-
-		if (!file->seek(tile->offset))
-			return QPixmap();
-		if (!file->read(data, tile->size))
-			return QPixmap();
-		pm = QPixmap::fromImage(QImage::fromData(ba));
-
-		if (!pm.isNull())
-			QPixmapCache::insert(key, pm);
-	}
-
-	return pm;
-}
-
 bool JNXMap::cb(Tile *tile, void *context)
 {
 	Ctx *ctx = static_cast<Ctx*>(context);
-	QPixmap pm(pixmap(tile, ctx->file));
-	pm.setDevicePixelRatio(ctx->ratio);
-	ctx->painter->drawPixmap(tile->pos / ctx->ratio, pm);
+	TileCache::Key key(ctx->map, ctx->zoom, tile->offset);
+
+	QPixmap *pm = TileCache::object(key);
+	if (!pm) {
+		pm = pixmap(ctx->file, tile->offset, tile->size);
+		if (pm) {
+			drawTile(ctx->painter, pm, tile->pos / ctx->ratio, ctx->ratio);
+			TileCache::insert(key, pm);
+		}
+	} else
+		drawTile(ctx->painter, pm, tile->pos / ctx->ratio, ctx->ratio);
 
 	return true;
 }
@@ -263,7 +276,7 @@ void JNXMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 {
 	Q_UNUSED(flags);
 	const RTree<Tile*, qreal, 2> &tree = _zooms.at(_zoom)->tree;
-	Ctx ctx(painter, &_file, _mapRatio);
+	Ctx ctx(this, _zoom, &_file, painter, _mapRatio);
 	QRectF rr(rect.topLeft() * _mapRatio, rect.size() * _mapRatio);
 
 	qreal min[2], max[2];

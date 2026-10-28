@@ -5,7 +5,6 @@
 #include <QString>
 #include <QList>
 #include <QDate>
-#include <QPrinter>
 #include "common/treenode.h"
 #include "common/rectc.h"
 #include "data/graph.h"
@@ -25,6 +24,7 @@ class QLabel;
 class QSplitter;
 class QPrinter;
 class QGeoPositionInfoSource;
+class QPermission;
 class FileBrowser;
 class GraphTab;
 class MapView;
@@ -35,19 +35,22 @@ class MapAction;
 class POIAction;
 class Data;
 class DEMLoader;
-class NavigationWidget;
+class ImageButton;
 
 class GUI : public QMainWindow
 {
 	Q_OBJECT
 
 public:
-	GUI();
+	GUI(const QString &lang);
 
 	bool openFile(const QString &fileName, bool tryUnknown, int &showError);
 	bool loadMap(const QString &fileName, MapAction *&action, int &showError);
 	void show();
 	void writeSettings();
+#ifdef Q_OS_ANDROID
+	void showClose();
+#endif // Q_OS_ANDROID
 
 private slots:
 	void about();
@@ -60,6 +63,9 @@ private slots:
 	void exportPNGFile();
 	void openFile();
 	void openDir();
+#ifdef Q_OS_ANDROID
+	void browseDir();
+#endif // Q_OS_ANDROID
 	void closeAll();
 	void reloadFiles();
 	void statistics();
@@ -68,7 +74,8 @@ private slots:
 	void showGraphGrids(bool show);
 	void showGraphSliderInfo(bool show);
 	void showPathMarkerInfo(QAction *action);
-	void selectMapLayers(QAction *action);
+	void selectMapStyle(QAction *action);
+	void selectMapLayer(QAction *action);
 #ifdef Q_OS_ANDROID
 	void showGraphTabs(bool show);
 #else // Q_OS_ANDROID
@@ -88,6 +95,10 @@ private slots:
 	void downloadDataDEM();
 	void downloadMapDEM();
 	void showDEMTiles();
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)) \
+  && (defined(Q_OS_ANDROID) || defined(Q_OS_MACOS))
+	void showPosition(bool show);
+#endif // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
 
 	void mapChanged(QAction *action);
 	void graphChanged(int);
@@ -98,6 +109,9 @@ private slots:
 	void recentFileSelected(QAction *action);
 	void clearRecentFiles();
 #endif // Q_OS_ANDROID
+
+	void nextTab();
+	void prevTab();
 
 	void next();
 	void prev();
@@ -124,6 +138,10 @@ private slots:
 	void mapInitialized();
 
 	void demLoaded();
+
+#ifdef Q_OS_ANDROID
+	void menu();
+#endif // Q_OS_ANDROID
 
 private:
 	typedef QPair<QDateTime, QDateTime> DateTimeRange;
@@ -153,9 +171,7 @@ private:
 	void createGraphTabs();
 	void createBrowser();
 
-#ifndef Q_OS_ANDROID
 	void openDir(const QString &path, int &showError);
-#endif // Q_OS_ANDROID
 	bool openPOIFile(const QString &fileName);
 	bool loadFile(const QString &fileName, bool tryUnknown, int &showError);
 	bool loadURL(const QUrl &url, int &showError);
@@ -169,6 +185,9 @@ private:
 	bool updateGraphTabs();
 	void updateDataDEMDownloadAction();
 	void updateMapDEMDownloadAction();
+	void updateMapLayers();
+	void updateMapStyles();
+	void updateHillShading();
 #ifndef Q_OS_ANDROID
 	void updateRecentFiles(const QString &fileName);
 #endif // Q_OS_ANDROID
@@ -197,6 +216,11 @@ private:
 
 	void downloadDEM(const RectC &rect);
 
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)) \
+  && (defined(Q_OS_ANDROID) || defined(Q_OS_MACOS))
+	void positionGranted(const QPermission &perm);
+#endif // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
+
 	void loadOptions();
 	void updateOptions(const Options &options);
 
@@ -207,15 +231,19 @@ private:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);
 
-#ifdef Q_OS_ANDROID
-	NavigationWidget *_navigation;
-#else // Q_OS_ANDROID
+	void fixWidgetOrder();
+
+	QString _lang;
+
+#ifndef Q_OS_ANDROID
 	QToolBar *_fileToolBar;
 	QToolBar *_showToolBar;
 	QToolBar *_navigationToolBar;
 #endif // Q_OS_ANDROID
 	QMenu *_poiMenu;
 	QMenu *_mapMenu;
+	QMenu *_mapStylesMenu;
+	QMenu *_mapLayersMenu;
 #ifndef Q_OS_ANDROID
 	QMenu *_recentFilesMenu;
 #endif // Q_OS_ANDROID
@@ -227,9 +255,9 @@ private:
 #ifndef Q_OS_ANDROID
 	QActionGroup *_recentFilesActionGroup;
 #endif // Q_OS_ANDROID
-#if !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_ANDROID)
 	QAction *_exitAction;
-#endif // Q_OS_MAC + Q_OS_ANDROID
+#endif // !Q_OS_MACOS && !Q_OS_ANDROID
 	QAction *_pathsAction;
 	QAction *_aboutAction;
 	QAction *_printFileAction;
@@ -237,6 +265,7 @@ private:
 	QAction *_exportPNGFileAction;
 	QAction *_openFileAction;
 	QAction *_openDirAction;
+	QAction *_browseDirAction;
 	QAction *_closeFileAction;
 	QAction *_reloadFileAction;
 	QAction *_statisticsAction;
@@ -279,8 +308,6 @@ private:
 	QAction *_dmsAction;
 	QAction *_totalTimeAction;
 	QAction *_movingTimeAction;
-	QAction *_nextMapAction;
-	QAction *_prevMapAction;
 	QAction *_showTracksAction;
 	QAction *_showRoutesAction;
 	QAction *_showWaypointsAction;
@@ -288,10 +315,12 @@ private:
 	QAction *_showWaypointIconsAction;
 	QAction *_showAreasAction;
 	QAction *_showRouteWaypointsAction;
+	QAction *_showTrackWaypointsAction;
 	QAction *_hideMarkersAction;
 	QAction *_showMarkersAction;
 	QAction *_showMarkerDateAction;
 	QAction *_showMarkerCoordinatesAction;
+	QAction *_showVideosAction;
 	QAction *_showTicksAction;
 	QAction *_showLegendAction;
 	QAction *_useStylesAction;
@@ -301,15 +330,14 @@ private:
 	QAction *_downloadMapDEMAction;
 	QAction *_showDEMTilesAction;
 	QAction *_drawHillShadingAction;
-	QAction *_drawRastersAction;
-	QAction *_drawVectorsAction;
-	QAction *_drawAllAction;
 	QAction *_mapsEnd;
 	QAction *_poisEnd;
-#ifndef Q_OS_ANDROID
+#ifndef Q_O_ANDROID
 	QAction *_clearRecentFilesAction;
 	QAction *_recentFilesEnd;
 #endif // Q_OS_ANDROID
+	QActionGroup *_mapStylesActionGroup;
+	QActionGroup *_mapLayersActionGroup;
 
 	QLabel *_fileNameLabel;
 	QLabel *_distanceLabel;
@@ -339,6 +367,15 @@ private:
 	QList<QByteArray> _windowStates;
 	QList<QByteArray> _windowGeometries;
 	int _frameStyle;
+#endif // Q_OS_ANDROID
+
+#ifdef Q_OS_ANDROID
+	QMenu *_menu;
+
+	ImageButton *_menuButton;
+	ImageButton *_closeButton;
+	ImageButton *_nextButton;
+	ImageButton *_prevButton;
 #endif // Q_OS_ANDROID
 
 	PDFExport _pdfExport;

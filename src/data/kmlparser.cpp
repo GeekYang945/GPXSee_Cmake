@@ -1,32 +1,22 @@
-/*
-	WARNING: This code uses internal Qt API - the QZipReader class for reading
-	ZIP files - and things may break if Qt changes the API. For Qt5 this is not
-	a problem as we can "see the future" now and there are no changes in all
-	the supported Qt5 versions up to the last one (5.15). In Qt6 the class
-	might change or even disappear in the future, but this is very unlikely
-	as there were no changes for several years and The Qt Company's policy
-	is: "do not invest any resources into any desktop related stuff unless
-	absolutely necessary". There is an issue (QTBUG-3897) since the year 2009 to
-	include the ZIP reader into the public API, which aptly illustrates the
-	effort The Qt Company is willing to make about anything desktop related...
-*/
-
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QCryptographicHash>
-#include <QtEndian>
 #include <QUrl>
 #include <QRegularExpression>
-#include <private/qzipreader_p.h>
+#include <QBuffer>
 #include "common/util.h"
+#include "common/zip.h"
 #include "kmlparser.h"
 
-static bool isZIP(QFile *file)
+static QString kmlFile(const QStringList &files)
 {
-	quint32 magic;
+	for (int i = 0; i < files.size(); i++) {
+		const QString &file = files.at(i);
+		if (QFileInfo(file).suffix().toLower() == "kml")
+			return file;
+	}
 
-	return (file->read((char *)&magic, sizeof(magic)) == (qint64)sizeof(magic)
-	  && qFromLittleEndian(magic) == 0x04034b50);
+	return QString();
 }
 
 qreal KMLParser::number()
@@ -47,8 +37,7 @@ qreal KMLParser::number()
 
 QDateTime KMLParser::time()
 {
-	QDateTime d = QDateTime::fromString(_reader.readElementText(),
-	  Qt::ISODate);
+	QDateTime d(QDateTime::fromString(_reader.readElementText(), Qt::ISODate));
 	if (!d.isValid())
 		_reader.raiseError(QString("Invalid %1").arg(
 		  _reader.name().toString()));
@@ -58,43 +47,31 @@ QDateTime KMLParser::time()
 
 bool KMLParser::coord(Trackpoint &trackpoint)
 {
-	QString data = _reader.readElementText();
-	const QChar *sp, *ep, *cp, *vp;
-	int c = 0;
-	qreal val[3];
-	bool res;
-
+	// In addition to space as given by the specification also allow comma as
+	// a separator due to broken KML files in the wild.
+	static const QRegularExpression	re("\\s+|,");
+	QString data(_reader.readElementText());
 	if (data.isEmpty())
 		return true;
+	QStringList list(data.trimmed().split(re));
+	if (list.size() < 2 || list.size() > 3)
+		return false;
 
-	sp = data.constData();
-	ep = sp + data.size();
+	bool lonRes, latRes;
+	double lon = list.at(0).toDouble(&lonRes);
+	double lat = list.at(1).toDouble(&latRes);
+	if (!(lonRes && latRes))
+		return false;
+	trackpoint.setCoordinates(Coordinates(lon, lat));
+	if (!trackpoint.coordinates().isValid())
+		return false;
 
-	for (cp = sp; cp < ep; cp++)
-		if (!cp->isSpace())
-			break;
-
-	for (vp = cp; cp <= ep; cp++) {
-		if (cp->isSpace() || cp->isNull()) {
-			if (c > 2)
-				return false;
-
-			val[c] = QString(vp, cp - vp).toDouble(&res);
-			if (!res)
-				return false;
-
-			if (c == 1) {
-				trackpoint.setCoordinates(Coordinates(val[0], val[1]));
-				if (!trackpoint.coordinates().isValid())
-					return false;
-			} else if (c == 2)
-				trackpoint.setElevation(val[2]);
-
-			while (cp->isSpace())
-				cp++;
-			vp = cp;
-			c++;
-		}
+	if (list.size() > 2) {
+		bool eleRes;
+		double ele = list.at(2).toDouble(&eleRes);
+		if (!eleRes)
+			return false;
+		trackpoint.setElevation(ele);
 	}
 
 	return true;
@@ -102,7 +79,7 @@ bool KMLParser::coord(Trackpoint &trackpoint)
 
 bool KMLParser::pointCoordinates(Waypoint &waypoint)
 {
-	QString data = _reader.readElementText();
+	QString data(_reader.readElementText());
 	const QChar *sp, *ep, *cp, *vp;
 	int c = 0;
 	qreal val[3];
@@ -152,7 +129,7 @@ bool KMLParser::pointCoordinates(Waypoint &waypoint)
 
 bool KMLParser::lineCoordinates(SegmentData &segment)
 {
-	QString data = _reader.readElementText();
+	QString data(_reader.readElementText());
 	const QChar *sp, *ep, *cp, *vp;
 	int c = 0;
 	qreal val[3];
@@ -203,7 +180,7 @@ bool KMLParser::lineCoordinates(SegmentData &segment)
 
 bool KMLParser::polygonCoordinates(QVector<Coordinates> &points)
 {
-	QString data = _reader.readElementText();
+	QString data(_reader.readElementText());
 	const QChar *sp, *ep, *cp, *vp;
 	int c = 0;
 	qreal val[3];
@@ -555,7 +532,7 @@ void KMLParser::photoOverlay(const Ctx &ctx, QVector<Waypoint> &waypoints,
 		else if (_reader.name() == QLatin1String("TimeStamp"))
 			w.setTimestamp(timeStamp());
 		else if (_reader.name() == QLatin1String("Style")) {
-			style(ctx.dir, pointStyles, unused, unused2);
+			style(ctx.dir, ctx.zip, pointStyles, unused, unused2);
 			id = QString();
 		} else if (_reader.name() == QLatin1String("StyleMap"))
 			styleMap(map);
@@ -579,16 +556,25 @@ void KMLParser::photoOverlay(const Ctx &ctx, QVector<Waypoint> &waypoints,
 		img.replace(re, "0");
 		if (!QUrl(img).scheme().isEmpty())
 			w.addLink(Link(img, "Photo Overlay"));
-		else if (ctx.zip && Util::tempDir().isValid()) {
-			QFileInfo fi(img);
-			QByteArray id(ctx.path.toUtf8() + img.toUtf8());
-			QString path(Util::tempDir().path() + "/" + QString("%0.%1")
-			  .arg(QCryptographicHash::hash(id, QCryptographicHash::Sha1)
-			  .toHex(), QString(fi.suffix())));
-			QFile::rename(ctx.dir.absoluteFilePath(img), path);
-			w.addImage(path);
-		} else if (!ctx.zip)
-			w.addImage(ctx.dir.absoluteFilePath(img));
+		else if (ctx.zip) {
+			if (Util::tempDir().isValid()) {
+				QFileInfo fi(img);
+				QByteArray id(ctx.path.toUtf8() + img.toUtf8());
+				QString path(QDir(Util::tempDir().path()).absoluteFilePath(
+				  QString("%0.%1").arg(QCryptographicHash::hash(id,
+				  QCryptographicHash::Sha1).toHex(), fi.suffix())));
+
+				QByteArray ba(ctx.zip->file(img));
+				if (!ba.isEmpty()) {
+					QFile file(path);
+					if (file.open(QIODevice::WriteOnly)) {
+						if (file.write(ba) == ba.size())
+							w.addImage(path);
+					}
+				}
+			}
+		} else if (ctx.dir)
+			w.addImage(ctx.dir->absoluteFilePath(img));
 
 		waypoints.append(w);
 	}
@@ -647,7 +633,7 @@ void KMLParser::placemark(const Ctx &ctx, QList<TrackData> &tracks,
 		else if (_reader.name() == QLatin1String("TimeStamp"))
 			timestamp = timeStamp();
 		else if (_reader.name() == QLatin1String("Style")) {
-			style(ctx.dir, pointStyles, polyStyles, lineStyles);
+			style(ctx.dir, ctx.zip, pointStyles, polyStyles, lineStyles);
 			id = QString();
 		} else if (_reader.name() == QLatin1String("StyleMap"))
 			styleMap(map);
@@ -752,16 +738,19 @@ QString KMLParser::styleUrl()
 	return (id.at(0) == '#') ? id.right(id.size() - 1) : QString();
 }
 
-void KMLParser::iconStyle(const QDir &dir, const QString &id,
+void KMLParser::iconStyle(const QDir *dir, const Zip *zip, const QString &id,
   PointStyleMap &styles)
 {
 	QPixmap img;
 	QColor c(0x55, 0x55, 0x55);
 
 	while (_reader.readNextStartElement()) {
-		if (_reader.name() == QLatin1String("Icon"))
-			img = QPixmap(dir.absoluteFilePath(icon()));
-		else if (_reader.name() == QLatin1String("color"))
+		if (_reader.name() == QLatin1String("Icon")) {
+			if (dir)
+				img = QPixmap(dir->absoluteFilePath(icon()));
+			else if (zip)
+				img = QPixmap::fromImage(QImage::fromData(zip->file(icon())));
+		} else if (_reader.name() == QLatin1String("color"))
 			c = color();
 		else
 			_reader.skipCurrentElement();
@@ -836,14 +825,15 @@ void KMLParser::styleMap(QMap<QString, QString> &map)
 	}
 }
 
-void KMLParser::style(const QDir &dir, PointStyleMap &pointStyles,
-  PolygonStyleMap &polyStyles, LineStyleMap &lineStyles)
+void KMLParser::style(const QDir *dir, const Zip *zip,
+  PointStyleMap &pointStyles, PolygonStyleMap &polyStyles,
+  LineStyleMap &lineStyles)
 {
 	QString id = _reader.attributes().value("id").toString();
 
 	while (_reader.readNextStartElement()) {
 		if (_reader.name() == QLatin1String("IconStyle"))
-			iconStyle(dir, id, pointStyles);
+			iconStyle(dir, zip, id, pointStyles);
 		else if (_reader.name() == QLatin1String("PolyStyle"))
 			polyStyle(id, polyStyles);
 		else if (_reader.name() == QLatin1String("LineStyle"))
@@ -894,7 +884,7 @@ void KMLParser::document(const Ctx &ctx, QList<TrackData> &tracks,
 		else if (_reader.name() == QLatin1String("PhotoOverlay"))
 			photoOverlay(ctx, waypoints, pointStyles, map);
 		else if (_reader.name() == QLatin1String("Style"))
-			style(ctx.dir, pointStyles, polyStyles, lineStyles);
+			style(ctx.dir, ctx.zip, pointStyles, polyStyles, lineStyles);
 		else if (_reader.name() == QLatin1String("StyleMap"))
 			styleMap(map);
 		else
@@ -926,6 +916,17 @@ void KMLParser::kml(const Ctx &ctx, QList<TrackData> &tracks,
 	}
 }
 
+void KMLParser::parse(const Ctx &ctx, QList<TrackData> &tracks,
+  QList<Area> &areas, QVector<Waypoint> &waypoints)
+{
+	if (_reader.readNextStartElement()) {
+		if (_reader.name() == QLatin1String("kml"))
+			kml(ctx, tracks, areas, waypoints);
+		else
+			_reader.raiseError("Not a KML file");
+	}
+}
+
 bool KMLParser::parse(QFile *file, QList<TrackData> &tracks,
   QList<RouteData> &routes, QList<Area> &areas, QVector<Waypoint> &waypoints)
 {
@@ -934,46 +935,31 @@ bool KMLParser::parse(QFile *file, QList<TrackData> &tracks,
 
 	_reader.clear();
 
-	if (isZIP(file)) {
-		QZipReader zip(fi.absoluteFilePath(), QIODevice::ReadOnly);
-		QTemporaryDir tempDir;
-		if (!tempDir.isValid() || !zip.extractAll(tempDir.path()))
-			_reader.raiseError("Error extracting ZIP file");
-		else {
-			QDir zipDir(tempDir.path());
-			QFileInfoList files(zipDir.entryInfoList(QStringList("*.kml"),
-			  QDir::Files));
+	if (Zip::isZIP(file)) {
+		Zip zip(file);
 
-			if (files.isEmpty())
+		if (!zip.isValid())
+			_reader.raiseError(zip.errorString());
+		else {
+			QString doc(kmlFile(zip.files()));
+
+			if (doc.isEmpty())
 				_reader.raiseError("No KML file found in ZIP file");
 			else {
-				QFile kmlFile(files.first().absoluteFilePath());
-				if (!kmlFile.open(QIODevice::ReadOnly))
-					_reader.raiseError("Error opening KML file");
-				else {
-					_reader.setDevice(&kmlFile);
+				QByteArray data(zip.file(doc));
+				QBuffer buffer(&data);
+				buffer.open(QIODevice::ReadOnly);
 
-					if (_reader.readNextStartElement()) {
-						if (_reader.name() == QLatin1String("kml"))
-							kml(Ctx(fi.absoluteFilePath(), zipDir, true),
-							  tracks, areas, waypoints);
-						else
-							_reader.raiseError("Not a KML file");
-					}
-				}
+				_reader.setDevice(&buffer);
+				Ctx ctx(fi.absoluteFilePath(), 0, &zip);
+				parse(ctx, tracks, areas, waypoints);
 			}
 		}
 	} else {
-		file->reset();
 		_reader.setDevice(file);
-
-		if (_reader.readNextStartElement()) {
-			if (_reader.name() == QLatin1String("kml"))
-				kml(Ctx(fi.absoluteFilePath(), fi.absoluteDir(), false), tracks,
-				  areas, waypoints);
-			else
-				_reader.raiseError("Not a KML file");
-		}
+		QDir dir(fi.absoluteDir());
+		Ctx ctx(fi.absoluteFilePath(), &dir, 0);
+		parse(ctx, tracks, areas, waypoints);
 	}
 
 	return !_reader.error();

@@ -1,11 +1,23 @@
 #include <QFileSystemWatcher>
 #include <QDir>
+#include "common/util.h"
 #include "filebrowser.h"
 
+#ifdef Q_OS_ANDROID
+#define PATH(file) file
+#else // Q_OS_ANDROID
+#define PATH(file) file.absoluteFilePath()
+#endif // Q_OS_ANDROID
 
-FileBrowser::FileBrowser(QObject *parent) : QObject(parent)
+FileBrowser::FileBrowser(const QStringList &filter, QObject *parent)
+  : QObject(parent)
 {
-#ifndef Q_OS_ANDROID
+#ifdef Q_OS_ANDROID
+	_filter.resize(filter.size());
+	for (int i = 0; i < _filter.size(); i++)
+		_filter[i] = QRegularExpression::fromWildcard(filter.at(i));
+#else // Q_OS_ANDROID
+	_filter = filter;
 	_watcher = new QFileSystemWatcher(this);
 	connect(_watcher, &QFileSystemWatcher::directoryChanged, this,
 	  &FileBrowser::reloadDirectory);
@@ -17,8 +29,27 @@ FileBrowser::FileBrowser(QObject *parent) : QObject(parent)
 #ifdef Q_OS_ANDROID
 void FileBrowser::setCurrentDir(const QString &path)
 {
-	QDir dir(path);
-	_files = dir.entryInfoList(_filter, QDir::Files);
+	if (_filter.isEmpty())
+		_files = Util::listDirFiles(path);
+	else {
+		QStringList files(Util::listDirFiles(path));
+
+		_files = QStringList();
+		for (int i = 0; i < files.size(); i++) {
+			const QString &f = files.at(i);
+			QString name(f.mid(f.lastIndexOf('/') + 1));
+
+			for (int j = 0; j < _filter.size(); j++) {
+				QRegularExpressionMatch match(_filter.at(j).match(name));
+				if (match.hasMatch()) {
+					_files.append(f);
+					break;
+				}
+			}
+		}
+	}
+	std::sort(_files.begin(), _files.end());
+
 	_index = _files.empty() ? -1 : 0;
 
 	emit listChanged();
@@ -34,19 +65,12 @@ void FileBrowser::setCurrent(const QString &path)
 		if (!_watcher->directories().isEmpty())
 			_watcher->removePaths(_watcher->directories());
 		_watcher->addPath(dir.canonicalPath());
-		_files = dir.entryInfoList(_filter, QDir::Files);
+		_files = dir.entryInfoList(_filter, QDir::Files, QDir::Name);
 	}
 
 	_index = _files.empty() ? -1 : _files.indexOf(file);
 }
 #endif // Q_OS_ANDROID
-
-void FileBrowser::setFilter(const QStringList &filter)
-{
-	_filter = filter;
-	if (!_files.isEmpty())
-		reloadDirectory(_files.last().canonicalPath());
-}
 
 bool FileBrowser::isLast() const
 {
@@ -60,7 +84,7 @@ bool FileBrowser::isFirst() const
 
 QString FileBrowser::current()
 {
-	return (_index >= 0) ? _files.at(_index).absoluteFilePath() : QString();
+	return (_index >= 0) ? PATH(_files.at(_index)) : QString();
 }
 
 QString FileBrowser::next()
@@ -68,7 +92,7 @@ QString FileBrowser::next()
 	if (_index < 0 || _index == _files.size() - 1)
 		return QString();
 
-	return _files.at(++_index).absoluteFilePath();
+	return PATH(_files.at(++_index));
 }
 
 QString FileBrowser::prev()
@@ -76,7 +100,7 @@ QString FileBrowser::prev()
 	if (_index <= 0)
 		return QString();
 
-	return _files.at(--_index).absoluteFilePath();
+	return PATH(_files.at(--_index));
 }
 
 QString FileBrowser::last()
@@ -85,7 +109,7 @@ QString FileBrowser::last()
 		return QString();
 
 	_index = _files.size() - 1;
-	return _files.last().absoluteFilePath();
+	return PATH(_files.last());
 }
 
 QString FileBrowser::first()
@@ -94,9 +118,10 @@ QString FileBrowser::first()
 		return QString();
 
 	_index = 0;
-	return _files.first().absoluteFilePath();
+	return PATH(_files.first());
 }
 
+#ifndef Q_OS_ANDROID
 void FileBrowser::reloadDirectory(const QString &path)
 {
 	QDir dir(path);
@@ -107,3 +132,4 @@ void FileBrowser::reloadDirectory(const QString &path)
 
 	emit listChanged();
 }
+#endif // Q_OS_ANDROID

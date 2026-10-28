@@ -1,7 +1,7 @@
 #ifndef IMG_IMGDATA_H
 #define IMG_IMGDATA_H
 
-#include "mapdata.h"
+#include "mapdata_img.h"
 
 class QFile;
 
@@ -10,7 +10,9 @@ namespace IMG {
 class IMGData : public MapData
 {
 public:
-	IMGData(const QString &fileName);
+	IMGData(const QString &fileName, PolyCache &polyCache,
+	  PointCache &pointCache, ElevationCache &demCache, QMutex &lock,
+	  QMutex &demLock);
 
 	unsigned blockBits() const {return _blockBits;}
 	bool readBlock(QFile *file, int blockNum, char *data) const;

@@ -1,6 +1,5 @@
 #include <QFileInfo>
 #include <QDataStream>
-#include <QPixmapCache>
 #include <QPainter>
 #include <QRegularExpression>
 #include <QtEndian>
@@ -10,12 +9,12 @@
 #include "utm.h"
 #include "pcs.h"
 #include "rectd.h"
+#include "tilecache.h"
 #include "rmap.h"
-
 
 #define MAGIC "CompeGPSRasterImage"
 
-static CalibrationPoint parseCalibrationPoint(const QString &str)
+static CalibrationPoint parseCalibrationPoint(const QString &str, int coord)
 {
 	QStringList fields(str.split(","));
 	if (fields.size() != 5)
@@ -29,7 +28,7 @@ static CalibrationPoint parseCalibrationPoint(const QString &str)
 	if (!ret1 || !ret2)
 		return CalibrationPoint();
 
-	return (fields.at(2) == "A")
+	return (coord == 1)
 	  ? CalibrationPoint(xy, Coordinates(pp.x(), pp.y()))
 	  : CalibrationPoint(xy, pp);
 }
@@ -83,6 +82,13 @@ static Projection parseProjection(const QString &str, const GCS &gcs)
 		case 14: // Swiss Grid
 			return Projection(PCS(gcs, Conversion(9815, Conversion::Setup(
 			  46.570866, 7.26225, 1.0, 600000, 200000, 90.0, 90.0), 9001)));
+		case 25: // Albers
+			if (fields.size() < 8)
+				return Projection();
+			return Projection(PCS(gcs, Conversion(9822, Conversion::Setup(
+			  fields.at(4).toDouble(), fields.at(5).toDouble(), NAN,
+			  fields.at(6).toDouble(), fields.at(7).toDouble(),
+			  fields.at(2).toDouble(), fields.at(3).toDouble()), 9001)));
 		case 108: // Dutch RD grid
 			return Projection(PCS(gcs, Conversion(9809, Conversion::Setup(
 			  52.15616055555555, 5.38763888888889, 0.9999079, 155000, 463000,
@@ -105,6 +111,7 @@ bool RMap::parseIMP(const QByteArray &data)
 	QStringList lines(QString(data).split("\r\n"));
 	QVector<CalibrationPoint> calibrationPoints;
 	QString projection, datum;
+	int coord = 0;
 
 	for (int i = 0; i < lines.count(); i++) {
 		const QString &line = lines.at(i);
@@ -113,9 +120,12 @@ bool RMap::parseIMP(const QByteArray &data)
 			projection = line.split("=").at(1);
 		else if (line.startsWith("Datum="))
 			datum = line.split("=").at(1);
-		else if (line.contains(re)) {
+		else if (line.startsWith("Coordinates=")) {
+			QString cs(line.split("=").at(1));
+			coord = cs.toInt();
+		} else if (line.contains(re)) {
 			QString point(line.split("=").at(1));
-			CalibrationPoint cp(parseCalibrationPoint(point));
+			CalibrationPoint cp(parseCalibrationPoint(point, coord));
 			if (cp.isValid())
 				calibrationPoints.append(cp);
 			else {
@@ -233,7 +243,9 @@ QByteArray RMap::readIMP(quint64 IMPOffset)
 
 bool RMap::readHeader(QDataStream &stream, Header &hdr)
 {
-	quint32 subtype, obfuscated;
+	quint32 subtype;
+	quint32 encryption = 0;
+	quint32 code = 0;
 	char magic[sizeof(MAGIC) - 1];
 
 	if (stream.readRawData(magic, sizeof(magic)) != sizeof(magic)
@@ -243,12 +255,31 @@ bool RMap::readHeader(QDataStream &stream, Header &hdr)
 	}
 
 	stream >> hdr.type;
+	if (hdr.type < 4 || hdr.type > 10) {
+		_errorString = QString::number(hdr.type) + ": invalid map type";
+		return false;
+	}
+
 	if (hdr.type > 5)
 		stream >> subtype;
 	if (hdr.type > 6)
-		stream >> obfuscated;
-	else
-		obfuscated = 0;
+		stream >> encryption;
+
+	if (encryption == 5) {
+		quint16 len;
+		stream >> code >> len;
+		stream.skipRawData(len + 1);
+	}
+
+	if (encryption && hdr.type >= 9) {
+		quint32 k;
+		stream >> k;
+		qint32 d = (k - 0xc) / 0x17;
+		qint32 m = code % 0x17;
+		qint32 skip = ((m + 0x40) * 8) * d;
+		stream.skipRawData(skip);
+	}
+
 	stream >> hdr.width >> hdr.height >> hdr.bpp >> hdr.unknown >> hdr.tileWidth
 	  >> hdr.tileHeight >> hdr.IMPOffset >> hdr.paletteSize;
 	if (stream.status() != QDataStream::Ok) {
@@ -256,13 +287,11 @@ bool RMap::readHeader(QDataStream &stream, Header &hdr)
 		return false;
 	}
 
-	if (hdr.type < 4 || hdr.type > 10) {
-		_errorString = QString::number(hdr.type) + ": unsupported map type";
-		return false;
-	}
-	if (obfuscated) {
-		_errorString = "Obfuscated maps not supported";
-		return false;
+	if (encryption) {
+		/* Only print a warning instead of returning an error as only the tile
+		   images will be invalid (blank). Everything else (map bounds,
+		   projection, zoom levels) should work. */
+		qWarning("%s: encrypted tile data", qUtf8Printable(path()));
 	}
 
 	return true;
@@ -359,10 +388,13 @@ Coordinates RMap::xy2ll(const QPointF &p)
 }
 
 void RMap::load(const Projection &in, const Projection &out, qreal deviceRatio,
-  bool hidpi)
+  bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 	if (!_file.open(QIODevice::ReadOnly))
@@ -375,28 +407,28 @@ void RMap::unload()
 	_file.close();
 }
 
-QPixmap RMap::tile(int x, int y)
+QPixmap *RMap::tile(const QPoint &xy)
 {
 	const Zoom &zoom = _zooms.at(_zoom);
 
-	qint32 index = y / _tileSize.height() * zoom.dim.width()
-	  + x / _tileSize.width();
-	if (index > zoom.tiles.size())
-		return QPixmap();
+	qint32 index = xy.y() / _tileSize.height() * zoom.dim.width()
+	  + xy.x() / _tileSize.width();
+	if (index >= zoom.tiles.size())
+		return 0;
 
 	quint64 offset = zoom.tiles.at(index);
 	if (!_file.seek(offset))
-		return QPixmap();
+		return 0;
 	QDataStream stream(&_file);
 	stream.setByteOrder(QDataStream::LittleEndian);
 	quint32 tag;
 	stream >> tag;
 	if (stream.status() != QDataStream::Ok)
-		return QPixmap();
+		return 0;
 
 	if (tag == 2) {
 		if (_palette.isEmpty())
-			return QPixmap();
+			return 0;
 		quint32 width, height, size;
 		stream >> width >> height >> size;
 		QSize tileSize(width, -(int)height);
@@ -407,15 +439,15 @@ QPixmap RMap::tile(int x, int y)
 		memcpy(ba.data(), &bes, sizeof(bes));
 
 		if (stream.readRawData(ba.data() + sizeof(bes), size) != (int)size)
-			return QPixmap();
+			return 0;
 		QByteArray uba = qUncompress(ba);
 		if (uba.size() < tileSize.width() * tileSize.height())
-			return QPixmap();
+			return 0;
 		QImage img((const uchar*)uba.constData(), tileSize.width(),
-		  tileSize.height(), QImage::Format_Indexed8);
+		  tileSize.height(), tileSize.width(), QImage::Format_Indexed8);
 		img.setColorTable(_palette);
 
-		return QPixmap::fromImage(img);
+		return new QPixmap(QPixmap::fromImage(img));
 	} else if (tag == 7) {
 		quint32 len;
 		stream >> len;
@@ -423,12 +455,12 @@ QPixmap RMap::tile(int x, int y)
 		QByteArray ba;
 		ba.resize(len);
 		if (stream.readRawData(ba.data(), ba.size()) != ba.size())
-			return QPixmap();
+			return 0;
 
 		QImage img(QImage::fromData(ba, "JPG"));
-		return QPixmap::fromImage(img);
+		return img.isNull() ? 0 : new QPixmap(QPixmap::fromImage(img));
 	} else
-		return QPixmap();
+		return 0;
 }
 
 void RMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
@@ -442,27 +474,33 @@ void RMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	for (int i = 0; i < ceil(s.width() / ts.width()); i++) {
 		for (int j = 0; j < ceil(s.height() / ts.height()); j++) {
-			int x = round(tl.x() * _mapRatio + i * _tileSize.width());
-			int y = round(tl.y() * _mapRatio + j * _tileSize.height());
+			QPoint xy(round(tl.x() * _mapRatio + i * _tileSize.width()),
+			  round(tl.y() * _mapRatio + j * _tileSize.height()));
+			QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());
+			TileCache::Key key(this, _zoom, xy);
 
-			QPixmap pixmap;
-			QString key = path() + "/" + QString::number(_zoom) + "_"
-			  + QString::number(x) + "_" + QString::number(y);
-			if (!QPixmapCache::find(key, &pixmap)) {
-				pixmap = tile(x, y);
-				if (!pixmap.isNull())
-					QPixmapCache::insert(key, pixmap);
-			}
-
-			if (pixmap.isNull())
-				qWarning("%s: error loading tile image", qUtf8Printable(key));
-			else {
-				pixmap.setDevicePixelRatio(_mapRatio);
-				QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());
-				painter->drawPixmap(tp, pixmap);
-			}
+			QPixmap *pm = TileCache::object(key);
+			if (!pm) {
+				pm = tile(xy);
+				if (pm) {
+					drawTile(painter, pm, tp);
+					TileCache::insert(key, pm);
+				}
+			}  else
+				drawTile(painter, pm, tp);
 		}
 	}
+}
+
+void RMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
+{
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 Map *RMap::create(const QString &path, const Projection &proj, bool *isDir)

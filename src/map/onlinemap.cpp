@@ -1,25 +1,28 @@
 #include <QPainter>
 #include <QDir>
-#include <QPixmapCache>
 #include "common/rectc.h"
 #include "common/programpaths.h"
 #include "downloader.h"
 #include "osm.h"
+#include "tilecache.h"
+#include "mvttile.h"
 #include "onlinemap.h"
 
-
-#define MAX_TILE_SIZE 4096
+using namespace MVT;
+using namespace OSM;
 
 OnlineMap::OnlineMap(const QString &fileName, const QString &name,
-  const QString &url, const Range &zooms, const RectC &bounds, qreal tileRatio,
-  const QList<HTTPHeader> &headers, int tileSize, bool scalable, bool invertY,
-  bool quadTiles, QObject *parent)
+  const QStringList &url, const QList<TileType> &tileType, int tileSize,
+  qreal tileRatio, const Range &zooms, const RectC &bounds,
+  const QList<HTTPHeader> &headers, bool invertY, bool quadTiles,
+  const QStringList &vectorLayers, QObject *parent)
     : Map(fileName, parent), _name(name), _zooms(zooms), _bounds(bounds),
-	_zoom(_zooms.max()), _tileSize(tileSize), _baseZoom(0), _mapRatio(1.0),
-	_tileRatio(tileRatio), _scalable(scalable), _scaledSize(0), _invertY(invertY)
+	_tileSize(tileSize), _zoom(_zooms.max()), _mapRatio(1.0),
+	_tileRatio(tileRatio), _tileType(tileType), _layers(0), _hillShading(false),
+	_invertY(invertY), _style(0), _vectorLayers(vectorLayers)
 {
 	_tileLoader = new TileLoader(QDir(ProgramPaths::tilesDir()).filePath(_name),
-	  this);
+	  QFileInfo(fileName).absoluteDir(), this);
 	_tileLoader->setUrl(url, quadTiles ? TileLoader::QuadTiles : TileLoader::XYZ);
 	_tileLoader->setHeaders(headers);
 	connect(_tileLoader, &TileLoader::finished, this, &OnlineMap::tilesLoaded);
@@ -27,9 +30,27 @@ OnlineMap::OnlineMap(const QString &fileName, const QString &name,
 	_baseZoom = _zooms.max();
 }
 
+const Style *OnlineMap::defaultStyle() const
+{
+	const QList<Style> &styles = Style::styles();
+
+	for (int i = 0; i < styles.size(); i++)
+		if (styles.at(i).matches(_vectorLayers))
+			return &styles.at(i);
+
+	qWarning("%s: no matching MVT style found", qUtf8Printable(path()));
+
+	return styles.isEmpty() ? 0 : &styles.first();
+}
+
 QRectF OnlineMap::bounds()
 {
 	return QRectF(ll2xy(_bounds.topLeft()), ll2xy(_bounds.bottomRight()));
+}
+
+qreal OnlineMap::resolution(const QRectF &rect)
+{
+	return OSM::resolution(rect.center(), _zoom, tileSize());
 }
 
 int OnlineMap::limitZoom(int zoom) const
@@ -47,18 +68,21 @@ int OnlineMap::zoomFit(const QSize &size, const RectC &rect)
 	if (!rect.isValid())
 		_zoom = _zooms.max();
 	else {
-		QRectF tbr(OSM::ll2m(rect.topLeft()), OSM::ll2m(rect.bottomRight()));
+		QRectF tbr(ll2m(rect.topLeft()), ll2m(rect.bottomRight()));
 		QPointF sc(tbr.width() / size.width(), tbr.height() / size.height());
-		_zoom = limitZoom(OSM::scale2zoom(qMax(sc.x(), -sc.y())
-		  / coordinatesRatio(), _tileSize));
+		_zoom = limitZoom(scale2zoom(qMax(sc.x(), -sc.y())
+		  / _coordinatesRatio, _tileSize));
 	}
+
+	_factor = zoom2scale(_zoom, _tileSize) * _coordinatesRatio;
 
 	return _zoom;
 }
 
-qreal OnlineMap::resolution(const QRectF &rect)
+void OnlineMap::setZoom(int zoom)
 {
-	return OSM::resolution(rect.center(), _zoom, tileSize());
+	_zoom = zoom;
+	_factor = zoom2scale(_zoom, _tileSize) * _coordinatesRatio;
 }
 
 int OnlineMap::zoomIn()
@@ -66,6 +90,8 @@ int OnlineMap::zoomIn()
 	cancelJobs(false);
 
 	_zoom = qMin(_zoom + 1, _zooms.max());
+	_factor = zoom2scale(_zoom, _tileSize) * _coordinatesRatio;
+
 	return _zoom;
 }
 
@@ -74,28 +100,41 @@ int OnlineMap::zoomOut()
 	cancelJobs(false);
 
 	_zoom = qMax(_zoom - 1, _zooms.min());
+	_factor = zoom2scale(_zoom, _tileSize) * _coordinatesRatio;
+
 	return _zoom;
 }
 
 void OnlineMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 	_zooms.setMax(_baseZoom);
 
-	if (_scalable) {
-		_scaledSize = _tileSize * deviceRatio;
-		_tileRatio = deviceRatio;
+	if (_tileType.contains(MVT)) {
+		if (!_tileType.contains(Raster))
+			_tileRatio = deviceRatio;
+		_style = (style >= 0 && style < Style::styles().size())
+		  ? &Style::styles().at(style) : defaultStyle();
 
-		for (int i = _baseZoom + 1; i <= OSM::ZOOMS.max(); i++) {
+		for (int i = _baseZoom + 1; i <= ZOOMS.max(); i++) {
 			if (_tileSize * _tileRatio * (1U<<(i - _baseZoom)) > MAX_TILE_SIZE)
 				break;
 			_zooms.setMax(i);
 		}
 	}
+
+	_layers = (layer > 0) ? 1 : _tileType.size();
+	_hillShading = OnlineMap::hillShading() && hillShading;
+
+	_coordinatesRatio = _mapRatio > 1.0 ? _mapRatio / _tileRatio : 1.0;
+	_factor = zoom2scale(_zoom, _tileSize) * _coordinatesRatio;
+
+	TileCache::clear();
 }
 
 void OnlineMap::unload()
@@ -103,19 +142,9 @@ void OnlineMap::unload()
 	cancelJobs(true);
 }
 
-qreal OnlineMap::coordinatesRatio() const
-{
-	return _mapRatio > 1.0 ? _mapRatio / _tileRatio : 1.0;
-}
-
-qreal OnlineMap::imageRatio() const
-{
-	return _mapRatio > 1.0 ? _mapRatio : _tileRatio;
-}
-
 qreal OnlineMap::tileSize() const
 {
-	return (_tileSize / coordinatesRatio());
+	return (_tileSize / _coordinatesRatio);
 }
 
 QPoint OnlineMap::tileCoordinates(int x, int y, int zoom) const
@@ -130,40 +159,43 @@ QPointF OnlineMap::tilePos(const QPointF &tl, const QPoint &tc,
 	  tl.y() + ((tc.y() - tile.y()) << overzoom) * tileSize());
 }
 
-bool OnlineMap::isRunning(const QString &key) const
+bool OnlineMap::isRunning(int zoom, const QPoint &xy) const
 {
 	for (int i = 0; i < _jobs.size(); i++) {
-		const QList<OnlineMapTile> &tiles = _jobs.at(i)->tiles();
-		for (int j = 0; j < tiles.size(); j++)
-			if (tiles.at(j).key() == key)
+		const QList<RasterTile> &tiles = _jobs.at(i)->tiles();
+		for (int j = 0; j < tiles.size(); j++) {
+			const RasterTile &mt = tiles.at(j);
+			if (mt.zoom() == zoom && mt.xy() == xy)
 				return true;
+		}
 	}
 
 	return false;
 }
 
-void OnlineMap::runJob(OnlineMapJob *job)
+void OnlineMap::runJob(MVTJob *job)
 {
 	_jobs.append(job);
 
-	connect(job, &OnlineMapJob::finished, this, &OnlineMap::jobFinished);
+	connect(job, &MVTJob::finished, this, &OnlineMap::jobFinished);
 	job->run();
 }
 
-void OnlineMap::removeJob(OnlineMapJob *job)
+void OnlineMap::removeJob(MVTJob *job)
 {
 	_jobs.removeOne(job);
 	job->deleteLater();
 }
 
-void OnlineMap::jobFinished(OnlineMapJob *job)
+void OnlineMap::jobFinished(MVTJob *job)
 {
-	const QList<OnlineMapTile> &tiles = job->tiles();
+	const QList<RasterTile> &tiles = job->tiles();
 
 	for (int i = 0; i < tiles.size(); i++) {
-		const OnlineMapTile &mt = tiles.at(i);
+		const RasterTile &mt = tiles.at(i);
 		if (!mt.pixmap().isNull())
-			QPixmapCache::insert(mt.key(), mt.pixmap());
+			TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+			  new QPixmap(mt.pixmap()));
 	}
 
 	removeJob(job);
@@ -181,12 +213,9 @@ void OnlineMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 {
 	int baseZoom = qMin(_baseZoom, _zoom);
 	unsigned overzoom = _zoom - baseZoom;
-
-	qreal scale = OSM::zoom2scale(baseZoom, _tileSize << overzoom);
-	QPoint tile = OSM::mercator2tile(QPointF(rect.topLeft().x() * scale,
-	  -rect.topLeft().y() * scale) * coordinatesRatio(), baseZoom);
-	QPointF tlm(OSM::tile2mercator(tile, baseZoom));
-	QPointF tl(QPointF(tlm.x() / scale, tlm.y() / scale) / coordinatesRatio());
+	QPoint tile = mercator2tile(QPointF(rect.topLeft().x(),
+	  -rect.topLeft().y()) * _factor, baseZoom);
+	QPointF tl(tile2mercator(tile, baseZoom) / _factor);
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	unsigned f = 1U<<overzoom;
 	int width = ceil(s.width() / (tileSize() * f));
@@ -197,7 +226,13 @@ void OnlineMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
 			QPoint tc(tileCoordinates(tile.x() + i, tile.y() + j, baseZoom));
-			fetchTiles.append(TileLoader::Tile(tc, baseZoom));
+			TileCache::Key key(this, _zoom, tc);
+			const QPixmap *pm = TileCache::object(key);
+			if (pm) {
+				QPointF tp(tilePos(tl, tc, tile, overzoom));
+				drawTile(painter, pm, tp);
+			} else
+				fetchTiles.append(TileLoader::Tile(tc, baseZoom));
 		}
 	}
 
@@ -206,72 +241,120 @@ void OnlineMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	else
 		_tileLoader->loadTilesAsync(fetchTiles);
 
-	QList<OnlineMapTile> renderTiles;
+	QList<RasterTile> renderTiles;
 	for (int i = 0; i < fetchTiles.count(); i++) {
 		const TileLoader::Tile &t = fetchTiles.at(i);
-		if (t.file().isNull())
+		if (!t.isComplete())
 			continue;
 
-		QString key(overzoom
-		  ? t.file() + ":" + QString::number(overzoom) : t.file());
-		if (isRunning(key))
+		if (isRunning(_zoom, t.xy()))
 			continue;
 
-		QPixmap pm;
-		if (QPixmapCache::find(key, &pm)) {
-			QPoint tc(tileCoordinates(t.xy().x(), t.xy().y(), baseZoom));
-			QPointF tp(tilePos(tl, tc, tile, overzoom));
-			drawTile(painter, pm, tp);
-		} else
-			renderTiles.append(OnlineMapTile(t.xy(), t.file(), _zoom, overzoom,
-			  _scaledSize, key));
+		QList<Source> sources;
+		for (int j = 0; j < qMin(t.files().size(), _layers); j++) {
+			const QString &path = t.files().at(j);
+			if (path != NULLFILE) {
+				QFile file(path);
+				if (file.open(QIODevice::ReadOnly))
+					sources.append(Source(file.readAll(), false,
+					  _tileType.at(j) == MVT));
+				else
+					qWarning("%s: %s", qUtf8Printable(path),
+					  qUtf8Printable(file.errorString()));
+			}
+		}
+
+		renderTiles.append(RasterTile(sources, _style, _zoom, t.xy(),
+		  _tileSize, _tileRatio, overzoom, _hillShading));
 	}
 
 	if (!renderTiles.isEmpty()) {
-		if (flags & Map::Block || !_scalable) {
+		if (flags & Map::Block || !_tileType.contains(MVT)) {
 			QFuture<void> future = QtConcurrent::map(renderTiles,
-			  &OnlineMapTile::load);
+			  &RasterTile::render);
 			future.waitForFinished();
 
 			for (int i = 0; i < renderTiles.size(); i++) {
-				const OnlineMapTile &mt = renderTiles.at(i);
-				QPixmap pm(mt.pixmap());
-				if (pm.isNull())
+				const RasterTile &mt = renderTiles.at(i);
+				if (mt.pixmap().isNull())
 					continue;
 
-				QPixmapCache::insert(mt.key(), pm);
+				TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+				  new QPixmap(mt.pixmap()));
 
 				QPoint tc(tileCoordinates(mt.xy().x(), mt.xy().y(), baseZoom));
 				QPointF tp(tilePos(tl, tc, tile, overzoom));
-				drawTile(painter, pm, tp);
+				drawTile(painter, &mt.pixmap(), tp);
 			}
 		} else
-			runJob(new OnlineMapJob(renderTiles));
+			runJob(new MVTJob(renderTiles));
 	}
 }
 
-void OnlineMap::drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp)
+void OnlineMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+ const QPointF &tp) const
 {
-	pixmap.setDevicePixelRatio(imageRatio());
-	painter->drawPixmap(tp, pixmap);
+	qreal ratio = _mapRatio > 1.0 ? _mapRatio : _tileRatio;
+
+	if (ratio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(ratio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 QPointF OnlineMap::ll2xy(const Coordinates &c)
 {
-	qreal scale = OSM::zoom2scale(_zoom, _tileSize);
-	QPointF m = OSM::ll2m(c);
-	return QPointF(m.x() / scale, m.y() / -scale) / coordinatesRatio();
+	QPointF m = ll2m(c);
+	return QPointF(m.x(), -m.y()) / _factor;
 }
 
 Coordinates OnlineMap::xy2ll(const QPointF &p)
 {
-	qreal scale = OSM::zoom2scale(_zoom, _tileSize);
-	return OSM::m2ll(QPointF(p.x() * scale, -p.y() * scale)
-	  * coordinatesRatio());
+	return m2ll(QPointF(p.x(), -p.y()) * _factor);
 }
 
 void OnlineMap::clearCache()
 {
 	_tileLoader->clearCache();
-	QPixmapCache::clear();
+	TileCache::clear();
+}
+
+bool OnlineMap::hillShading() const
+{
+	return _style && _style->hasHillShading();
+}
+
+QStringList OnlineMap::styles(int &defaultStyle) const
+{
+	QStringList list;
+
+	defaultStyle = -1;
+
+	if (_tileType.contains(MVT)) {
+		const QList<Style> &styles = Style::styles();
+
+		list.reserve(styles.size());
+		for (int i = 0; i < styles.size(); i++) {
+			const Style &s = styles.at(i);
+			list.append(s.name());
+			if (_style == &s)
+				defaultStyle = i;
+		}
+	}
+
+	return list;
+}
+
+QStringList OnlineMap::layers(const QString &lang, int &defaultLayer) const
+{
+	Q_UNUSED(lang);
+
+	defaultLayer = 0;
+
+	if (_tileType.size() > 1)
+		return QStringList() << tr("All") << tr("Basemap only");
+	else
+		return QStringList();
 }

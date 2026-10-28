@@ -8,7 +8,7 @@ static QList<DEM::Tile> tiles(const RectC &rect)
 {
 	QList<DEM::Tile> list;
 
-	if (rect.isNull())
+	if (!rect.isValid(false))
 		return list;
 
 	for (int i = qFloor(rect.top()); i >= qFloor(rect.bottom()); i--)
@@ -32,7 +32,7 @@ DEMLoader::DEMLoader(const QString &dir, QObject *parent)
 	connect(_downloader, &Downloader::finished, this, &DEMLoader::finished);
 }
 
-int DEMLoader::numTiles(const RectC &rect) const
+int DEMLoader::numTiles(const RectC &rect, int limit) const
 {
 	QList<DEM::Tile> tl(tiles(rect));
 	int cnt = 0;
@@ -44,12 +44,14 @@ int DEMLoader::numTiles(const RectC &rect) const
 
 		if (!(QFileInfo::exists(zn) || QFileInfo::exists(fn)))
 			cnt++;
+		if (limit && cnt > limit)
+			return -1;
 	}
 
 	return cnt;
 }
 
-bool DEMLoader::loadTiles(const RectC &rect)
+bool DEMLoader::loadTiles(const RectC &rect, int limit)
 {
 	QList<DEM::Tile> tl(tiles(rect));
 	QList<Download> dl;
@@ -73,8 +75,8 @@ bool DEMLoader::loadTiles(const RectC &rect)
 			dl.append(Download(url, isZip(url) ? zn : fn));
 		}
 
-		if (dl.size() > DEM_DOWNLOAD_LIMIT) {
-			qWarning("DEM download limit (%d) exceeded.", DEM_DOWNLOAD_LIMIT);
+		if (limit && dl.size() > limit) {
+			qWarning("DEM download limit (%d) exceeded.", limit);
 			return false;
 		}
 	}

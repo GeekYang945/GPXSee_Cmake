@@ -1,15 +1,16 @@
 #include <QPainter>
-#include <QPixmapCache>
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QSqlField>
+#include <QSqlError>
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
 #include <QXmlStreamReader>
+#include "common/util.h"
 #include "pcs.h"
 #include "utm.h"
-#include "metatype.h"
+#include "tilecache.h"
 #include "oruxmap.h"
 
 
@@ -424,7 +425,7 @@ OruxMap::OruxMap(const QString &fileName, QObject *parent)
 		_db.setDatabaseName(dbFile);
 		_db.setConnectOptions("QSQLITE_OPEN_READONLY");
 		if (!_db.open()) {
-			_errorString = "Error opening database file";
+			_errorString = "OruxMapsImages.db: " + _db.lastError().text();
 			return;
 		}
 
@@ -486,15 +487,21 @@ int OruxMap::zoomOut()
 }
 
 void OruxMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 
-	if (_db.isValid())
-		_db.open();
+	if (_db.isValid()) {
+		if (!_db.open())
+			qWarning("%s: %s", qUtf8Printable(_db.databaseName()),
+			  qUtf8Printable(_db.lastError().text()));
+	}
 }
 
 void OruxMap::unload()
@@ -503,36 +510,29 @@ void OruxMap::unload()
 		_db.close();
 }
 
-QPixmap OruxMap::tile(const Zoom &z, int x, int y) const
+QPixmap *OruxMap::tile(const Zoom &z, const QPoint &xy) const
 {
 	if (_db.isValid()) {
 		QSqlQuery query(_db);
-		query.prepare("SELECT image FROM tiles WHERE z=:z AND x=:x AND y=:y");
+		if (!query.prepare("SELECT image FROM tiles WHERE z=:z AND x=:x AND y=:y"))
+			return 0;
 		query.bindValue(":z", z.zoom);
-		query.bindValue(":x", x);
-		query.bindValue(":y", y);
-		query.exec();
+		query.bindValue(":x", xy.x());
+		query.bindValue(":y", xy.y());
+		if (!(query.exec() && query.first()))
+			return 0;
 
-		if (!query.first()) {
-			qWarning("%s: SQL %d-%d-%d: not found", qUtf8Printable(name()),
-			  z.zoom, x, y);
-			return QPixmap();
-		} else {
-			QImage img(QImage::fromData(query.value(0).toByteArray()));
-			return QPixmap::fromImage(img);
-		}
+		QImage img(QImage::fromData(query.value(0).toByteArray()));
+		return img.isNull() ? 0 : new QPixmap(QPixmap::fromImage(img));
 	} else {
-		QString fileName(z.fileName + "_" + QString::number(x) + "_"
-		  + QString::number(y) + ".omc2");
+		QString fileName(z.fileName + "_" + QString::number(xy.x()) + "_"
+		  + QString::number(xy.y()) + ".omc2");
 		QString path(z.set.absoluteFilePath(fileName));
-		if (!QFileInfo::exists(path)) {
-			qWarning("%s: %s: not found", qUtf8Printable(name()),
-			  qUtf8Printable(fileName));
-			return QPixmap();
-		} else {
-			QImage img(path);
-			return QPixmap::fromImage(img);
-		}
+		if (!QFileInfo::exists(path))
+			return 0;
+
+		QImage img(path);
+		return img.isNull() ? 0: new QPixmap(QPixmap::fromImage(img));
 	}
 }
 
@@ -547,26 +547,35 @@ void OruxMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	for (int i = 0; i < ceil(s.width() / ts.width()); i++) {
 		for (int j = 0; j < ceil(s.height() / ts.height()); j++) {
-			int x = round(tl.x() * _mapRatio + i * z.tileSize.width());
-			int y = round(tl.y() * _mapRatio + j * z.tileSize.height());
+			QPoint xy(round(tl.x() * _mapRatio + i * z.tileSize.width())
+				/ z.tileSize.width(),
+			  round(tl.y() * _mapRatio + j * z.tileSize.height())
+				/ z.tileSize.height());
+			QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());
+			TileCache::Key key(this, z.zoom, xy);
 
-			QPixmap pixmap;
-			QString key = path() + "/" + QString::number(z.zoom)
-			  + "_" + QString::number(x/z.tileSize.width())
-			  + "_" + QString::number(y/z.tileSize.height());
-			if (!QPixmapCache::find(key, &pixmap)) {
-				pixmap = tile(z, x/z.tileSize.width(), y/z.tileSize.height());
-				if (!pixmap.isNull())
-					QPixmapCache::insert(key, pixmap);
-			}
-
-			if (!pixmap.isNull()) {
-				pixmap.setDevicePixelRatio(_mapRatio);
-				QPointF tp(tl.x() + i * ts.width(), tl.y() + j * ts.height());
-				painter->drawPixmap(tp, pixmap);
-			}
+			QPixmap *pm = TileCache::object(key);
+			if (!pm) {
+				pm = tile(z, xy);
+				if (pm) {
+					drawTile(painter, pm, tp);
+					TileCache::insert(key, pm);
+				}
+			} else
+				drawTile(painter, pm, tp);
 		}
 	}
+}
+
+void OruxMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
+{
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }
 
 QRectF OruxMap::bounds()

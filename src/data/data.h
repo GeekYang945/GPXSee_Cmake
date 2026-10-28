@@ -29,7 +29,8 @@ public:
 	static QStringList filter();
 
 private:
-	void processData(QList<TrackData> &trackData, QList<RouteData> &routeData);
+	void processData(const QList<TrackData> &trackData,
+	  const QList<RouteData> &routeData);
 
 	bool _valid;
 	QString _errorString;
@@ -41,6 +42,9 @@ private:
 	QVector<Waypoint> _waypoints;
 
 	static QMultiMap<QString, Parser*> _parsers;
+#ifdef Q_OS_ANDROID
+	static bool _permChecked;
+#endif // Q_OS_ANDROID
 };
 
 #endif // DATA_H

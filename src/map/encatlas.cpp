@@ -1,10 +1,12 @@
 #include <QPainter>
-#include <QPixmapCache>
+#include <QFileInfo>
+#include <QDir>
 #include "common/wgs84.h"
 #include "GUI/format.h"
 #include "rectd.h"
 #include "pcs.h"
 #include "encjob.h"
+#include "tilecache.h"
 #include "encatlas.h"
 
 using namespace ENC;
@@ -49,7 +51,7 @@ ENCAtlas::IntendedUsage ENCAtlas::usage(const QString &path)
 	if (basename.size() != 8)
 		return Unknown;
 	int iu = basename.at(2).digitValue();
-	if (iu < 1 || iu > 9)
+	if (iu < Overview || iu > RiverBerthing)
 		return Unknown;
 
 	return (IntendedUsage)iu;
@@ -64,21 +66,23 @@ bool ENCAtlas::processRecord(const ISO8211::Record &record, QByteArray &file,
 	const ENC::ISO8211::Field &field = record.at(1);
 
 	if (field.tag() == CATD) {
-		if (field.data().at(0).size() < 10)
+		const QVector<QVariant> &e = field.data().at(0);
+		if (e.size() < 10)
 			return false;
-		QByteArray impl = field.data().at(0).at(5).toByteArray();
-		file = field.data().at(0).at(2).toByteArray();
+
+		QByteArray impl = e.at(5).toByteArray();
+		file = e.at(2).toByteArray();
 
 		if (impl == "BIN" && file.endsWith("000")) {
-			QByteArray slat = field.data().at(0).at(6).toByteArray();
-			QByteArray wlon = field.data().at(0).at(7).toByteArray();
-			QByteArray nlat = field.data().at(0).at(8).toByteArray();
-			QByteArray elon = field.data().at(0).at(9).toByteArray();
+			QByteArray slat = e.at(6).toByteArray();
+			QByteArray wlon = e.at(7).toByteArray();
+			QByteArray nlat = e.at(8).toByteArray();
+			QByteArray elon = e.at(9).toByteArray();
 
 			bool ok1, ok2, ok3, ok4;
 			bounds = RectC(Coordinates(wlon.toDouble(&ok1), nlat.toDouble(&ok2)),
 			  Coordinates(elon.toDouble(&ok3), slat.toDouble(&ok4)));
-			if (!(ok1 && ok2 && ok3 && ok4))
+			if (!(ok1 && ok2 && ok3 && ok4 && bounds.isValid()))
 				return false;
 
 			file.replace('\\', '/');
@@ -98,13 +102,9 @@ void ENCAtlas::addMap(const QDir &dir, const QByteArray &file,
 		qWarning("%s: No such map file", qUtf8Printable(path));
 		return;
 	}
-	if (!bounds.isValid()) {
-		qWarning("%s: Invalid map bounds", qUtf8Printable(path));
-		return;
-	}
 
 	IntendedUsage iu = usage(path);
-	auto it = _data.find(iu);
+	AtlasMap::iterator it = _data.find(iu);
 	if (it == _data.end())
 		it = _data.insert(iu, new AtlasData(_cache, _cacheLock));
 
@@ -159,10 +159,13 @@ ENCAtlas::~ENCAtlas()
 }
 
 void ENCAtlas::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(hidpi);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_tileRatio = deviceRatio;
 	_projection = out;
@@ -170,7 +173,7 @@ void ENCAtlas::load(const Projection &in, const Projection &out,
 	Q_ASSERT(!_style);
 	_style = new Style(deviceRatio);
 
-	QPixmapCache::clear();
+	TileCache::clear();
 }
 
 void ENCAtlas::unload()
@@ -188,7 +191,8 @@ int ENCAtlas::zoomFit(const QSize &size, const RectC &rect)
 	if (rect.isValid()) {
 		RectD pr(rect, _projection, 10);
 
-		for (auto it = _data.cbegin(); it != _data.cend(); ++it) {
+		for (AtlasMap::const_iterator it = _data.cbegin(); it != _data.cend();
+		  ++it) {
 			Range z(zooms(it.key()));
 
 			_usage = it.key();
@@ -225,7 +229,7 @@ int ENCAtlas::zoomIn()
 	if (_zoom + 1 <= zooms(_usage).max())
 		_zoom++;
 	else {
-		auto it = _data.find(_usage);
+		AtlasMap::iterator it = _data.find(_usage);
 		if (++it != _data.end()) {
 			_usage = it.key();
 			_zoom = zooms(it.key()).min();
@@ -244,7 +248,7 @@ int ENCAtlas::zoomOut()
 	if (_zoom - 1 >= zooms(_usage).min())
 		_zoom--;
 	else {
-		auto it = _data.find(_usage);
+		AtlasMap::iterator it = _data.find(_usage);
 		if (it != _data.begin()) {
 			--it;
 			_usage = it.key();
@@ -318,7 +322,8 @@ void ENCAtlas::jobFinished(ENCJob *job)
 	for (int i = 0; i < tiles.size(); i++) {
 		const ENC::RasterTile &mt = tiles.at(i);
 		if (!mt.pixmap().isNull())
-			QPixmapCache::insert(key(mt.zoom(), mt.xy()), mt.pixmap());
+			TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+			  new QPixmap(mt.pixmap()));
 	}
 
 	removeJob(job);
@@ -341,7 +346,7 @@ QString ENCAtlas::key(int zoom, const QPoint &xy) const
 QList<Data*> ENCAtlas::levels() const
 {
 	QList<Data*> list;
-	QMap<IntendedUsage, ENC::AtlasData*>::const_iterator it = _data.find(_usage);
+	AtlasMap::const_iterator it = _data.find(_usage);
 
 	do {
 		list.append(it.value());
@@ -359,19 +364,17 @@ void ENCAtlas::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	int width = ceil(s.width() / TILE_SIZE);
 	int height = ceil(s.height() / TILE_SIZE);
-
 	QList<RasterTile> tiles;
 
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
 			QPoint ttl(tl.x() + i * TILE_SIZE, tl.y() + j * TILE_SIZE);
-			if (isRunning(_zoom, ttl))
-				continue;
+			TileCache::Key key(this, _zoom, ttl);
+			const QPixmap *pm = TileCache::object(key);
 
-			QPixmap pm;
-			if (QPixmapCache::find(key(_zoom, ttl), &pm))
-				painter->drawPixmap(ttl, pm);
-			else
+			if (pm)
+				painter->drawPixmap(ttl, *pm);
+			else if (!isRunning(_zoom, ttl))
 				tiles.append(RasterTile(_projection, _transform, _style,
 				  data, _zoom, zr, QRect(ttl, QSize(TILE_SIZE, TILE_SIZE)),
 				  _tileRatio));
@@ -387,7 +390,8 @@ void ENCAtlas::draw(QPainter *painter, const QRectF &rect, Flags flags)
 				const RasterTile &mt = tiles.at(i);
 				const QPixmap &pm = mt.pixmap();
 				painter->drawPixmap(mt.xy(), pm);
-				QPixmapCache::insert(key(mt.zoom(), mt.xy()), pm);
+				TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+				  new QPixmap(pm));
 			}
 		} else
 			runJob(new ENCJob(tiles));

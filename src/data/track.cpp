@@ -149,7 +149,7 @@ Track::Track(const TrackData &data) : _pause(0)
 					  sd.at(j).timestamp()) / 1000.0;
 				else {
 					qWarning("%s: %s: time skew detected",
-					  qUtf8Printable(_data.name()),
+					  qUtf8Printable(_data.file()),
 					  qUtf8Printable(sd.at(j).timestamp().toString(Qt::ISODate)));
 					dt = 0;
 				}
@@ -157,12 +157,12 @@ Track::Track(const TrackData &data) : _pause(0)
 				dt = NAN;
 				if (hasTime) {
 					qWarning("%s: missing timestamp(s), time graphs disabled",
-					  qUtf8Printable(_data.name()));
+					  qUtf8Printable(_data.file()));
 					hasTime = false;
-					for (int i = 0; i < seg.time.size(); i++)
-						seg.time[i] = NAN;
-					for (int i = 0; i < seg.speed.size(); i++)
-						seg.speed[i] = NAN;
+					for (int k = 0; k < seg.time.size(); k++)
+						seg.time[k] = NAN;
+					for (int k = 0; k < seg.speed.size(); k++)
+						seg.speed[k] = NAN;
 				}
 			}
 			seg.time.append(seg.time.last() + dt);
@@ -538,9 +538,6 @@ Graph Track::cadence() const
 Graph Track::power() const
 {
 	Graph ret;
-	QList<int> stop;
-	qreal p;
-
 
 	for (int i = 0; i < _data.size(); i++) {
 		const SegmentData &sd = _data.at(i);
@@ -548,6 +545,8 @@ Graph Track::power() const
 			continue;
 		const Segment &seg = _segments.at(i);
 		GraphSegment gs(seg.start);
+		QList<int> stop;
+		qreal p;
 
 		for (int j = 0; j < sd.size(); j++) {
 			if (sd.at(j).hasPower() && seg.stop.contains(j)) {
@@ -636,7 +635,7 @@ Path Track::path() const
 	return ret;
 }
 
-bool Track::discardStopPoint(const Segment &seg, int i) const
+bool Track::discardStopPoint(const Segment &seg, int i)
 {
 	return (seg.stop.contains(i) && seg.stop.contains(i-1)
 	  && seg.stop.contains(i+1) && i > 0 && i < seg.distance.size() - 1);

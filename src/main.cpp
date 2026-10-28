@@ -13,16 +13,18 @@ int main(int argc, char *argv[])
 #else // QT6
 	qRegisterMetaType<TimeZoneInfo>("TimeZoneInfo");
 	QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
-	  Qt::HighDpiScaleFactorRoundingPolicy::Round);
+	  Qt::HighDpiScaleFactorRoundingPolicy::RoundPreferFloor);
 #endif // QT6
 
 	QSurfaceFormat fmt;
 	fmt.setProfile(QSurfaceFormat::CoreProfile);
+
 #ifdef Q_OS_ANDROID
 	fmt.setRenderableType(QSurfaceFormat::OpenGLES);
+	fmt.setVersion(3, 1);
 #else // Android
-	fmt.setVersion(3, 2);
 	fmt.setRenderableType(QSurfaceFormat::OpenGL);
+	fmt.setVersion(3, 2);
 #endif // Android
 	fmt.setDepthBufferSize(24);
 	fmt.setStencilBufferSize(8);

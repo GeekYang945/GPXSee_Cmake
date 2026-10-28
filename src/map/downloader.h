@@ -8,7 +8,7 @@
 #include <QHash>
 #include "common/kv.h"
 
-class QFile;
+class QSaveFile;
 
 typedef KV<QByteArray, QByteArray> HTTPHeader;
 
@@ -46,6 +46,7 @@ public:
 	Downloader(QObject *parent = 0) : QObject(parent) {}
 
 	bool get(const QList<Download> &list, const QList<HTTPHeader> &headers);
+	bool hasError(const QUrl &url) const {return _errorDownloads.contains(url);}
 	void clearErrors() {_errorDownloads.clear();}
 
 	static void setNetworkManager(QNetworkAccessManager *manager)
@@ -66,7 +67,7 @@ private:
 	void downloadFinished(QNetworkReply *reply);
 	void readData(QNetworkReply *reply);
 
-	QHash<QUrl, QFile*> _currentDownloads;
+	QHash<QUrl, QSaveFile*> _currentDownloads;
 	QHash<QUrl, int> _errorDownloads;
 
 	static QNetworkAccessManager *_manager;

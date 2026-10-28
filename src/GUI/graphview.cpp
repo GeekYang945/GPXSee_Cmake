@@ -495,7 +495,7 @@ void GraphView::updateSliderInfo()
 {
 	QLocale l(QLocale::system());
 	qreal r = 0, y = 0;
-	GraphItem *cardinal = singleGraph() ? _graphs.first() : 0;
+	const GraphItem *cardinal = singleGraph() ? _graphs.first() : 0;
 
 	if (cardinal) {
 		QRectF br(_bounds);
@@ -504,7 +504,8 @@ void GraphView::updateSliderInfo()
 			  _minYRange/2 - br.height()/2);
 
 		y = -cardinal->yAtX(_sliderPos);
-		r = (y - br.bottom()) / br.height();
+		if (!std::isnan(y))
+			r = (y - br.bottom()) / br.height();
 	}
 
 	qreal pos = (_sliderPos / bounds().width()) * _slider->area().width();
@@ -516,12 +517,15 @@ void GraphView::updateSliderInfo()
 	QString xText(_graphType == Time ? Format::timeSpan(_sliderPos,
 	  bounds().width() > 3600) : l.toString(_sliderPos * _xScale, 'f', 1)
 	  + UNIT_SPACE + _xUnits);
-	QString yText((!cardinal) ? QString() : l.toString(-y * _yScale + _yOffset,
-	  'f', _precision) + UNIT_SPACE + _yUnits);
+	QString yText((!cardinal || std::isnan(y))
+	  ? QString()
+	  : l.toString(-y * _yScale + _yOffset, 'f', _precision) + UNIT_SPACE
+	    + _yUnits);
 	if (cardinal && cardinal->secondaryGraph()) {
 		qreal delta = y + cardinal->secondaryGraph()->yAtX(_sliderPos);
-		yText += QString(" ") + QChar(0x0394) + l.toString(-delta * _yScale
-		  + _yOffset, 'f', _precision) + UNIT_SPACE + _yUnits;
+		if (!(std::isnan(y) || std::isnan(delta)))
+			yText += QString(" ") + QChar(0x0394) + l.toString(-delta * _yScale
+			  + _yOffset, 'f', _precision) + UNIT_SPACE + _yUnits;
 	}
 	_sliderInfo->setText(xText, yText);
 }
@@ -571,7 +575,7 @@ void GraphView::setPalette(const Palette &palette)
 
 	QSet<GraphItem*> secondary;
 	for (int i = 0; i < _graphs.count(); i++) {
-		GraphItem *g = _graphs[i];
+		const GraphItem *g = _graphs[i];
 		if (g->secondaryGraph())
 			secondary.insert(g->secondaryGraph());
 	}

@@ -17,7 +17,10 @@
 #define GeogPrimeMeridianGeoKey        2051
 #define GeogAngularUnitsGeoKey         2054
 #define GeogEllipsoidGeoKey            2056
+#define GeogSemiMajorAxisGeoKey        2057
+#define GeogInvFlatteningGeoKey        2059
 #define GeogAzimuthUnitsGeoKey         2060
+#define GeogTOWGS84GeoKey              2062
 #define ProjectedCSTypeGeoKey          3072
 #define ProjectionGeoKey               3074
 #define ProjCoordTransGeoKey           3075
@@ -45,6 +48,7 @@
 #define ModelTypeProjected             1
 #define ModelTypeGeographic            2
 #define ModelTypeGeocentric            3
+#define ModelTypeUserDefined           32767
 
 #define CT_TransverseMercator          1
 #define CT_ObliqueMercator             3
@@ -61,7 +65,6 @@
 #define IS_SET(map, key) \
 	((map).contains(key) && (map).value(key).SHORT != 32767)
 
-
 struct GeoKeyHeader {
 	quint16 KeyDirectoryVersion;
 	quint16 KeyRevision;
@@ -76,21 +79,112 @@ struct GeoKeyEntry {
 	quint16 ValueOffset;
 };
 
+static bool readGeoValue(TIFFFile &file, qint64 offset, quint16 index,
+  double &val)
+{
+	qint64 pos = file.pos();
 
-bool GeoTIFF::readEntry(TIFFFile &file, Ctx &ctx) const
+	if (!file.seek(offset + index * sizeof(double)))
+		return false;
+	if (!file.readValue(val))
+		return false;
+
+	return file.seek(pos);
+}
+
+static bool readGeoArray(TIFFFile &file, qint64 offset, quint16 index,
+  QVector<double> &val)
+{
+	qint64 pos = file.pos();
+
+	if (!file.seek(offset + index * sizeof(double)))
+		return false;
+	for (int i = 0; i < val.size(); i++)
+		if (!file.readValue(val[i]))
+			return false;
+
+	return file.seek(pos);
+}
+
+static bool readScale(TIFFFile &file, qint64 offset, PointD &scale)
+{
+	if (!file.seek(offset))
+		return false;
+
+	if (!file.readValue(scale.rx()))
+		return false;
+	if (!file.readValue(scale.ry()))
+		return false;
+
+	return true;
+}
+
+static bool readTiepoints(TIFFFile &file, qint64 offset, quint32 count,
+  QList<ReferencePoint> &points)
+{
+	double z, pz;
+	PointD xy, pp;
+
+	if (!file.seek(offset))
+		return false;
+
+	for (quint32 i = 0; i < count; i++) {
+		if (!file.readValue(xy.rx()))
+			return false;
+		if (!file.readValue(xy.ry()))
+			return false;
+		if (!file.readValue(z))
+			return false;
+
+		if (!file.readValue(pp.rx()))
+			return false;
+		if (!file.readValue(pp.ry()))
+			return false;
+		if (!file.readValue(pz))
+			return false;
+
+		points.append(ReferencePoint(xy, pp));
+	}
+
+	return true;
+}
+
+static bool readMatrix(TIFFFile &file, qint64 offset, double matrix[16])
+{
+	if (!file.seek(offset))
+		return false;
+
+	for (int i = 0; i < 16; i++)
+		if (!file.readValue(matrix[i]))
+			return false;
+
+	return true;
+}
+
+bool GeoTIFF::readEntry(TIFFFile &file, Ctx &ctx)
 {
 	quint16 tag;
 	quint16 type;
-	quint32 count, offset;
+	qint64 count, offset;
 
 	if (!file.readValue(tag))
 		return false;
 	if (!file.readValue(type))
 		return false;
-	if (!file.readValue(count))
-		return false;
-	if (!file.readValue(offset))
-		return false;
+	if (file.isBigTIFF()) {
+		if (!file.readValue(count))
+			return false;
+		if (!file.readValue(offset))
+			return false;
+	} else {
+		quint32 count32, offset32;
+		if (!file.readValue(count32))
+			return false;
+		count = count32;
+		if (!file.readValue(offset32))
+			return false;
+		offset = offset32;
+	}
 
 	switch (tag) {
 		case ModelPixelScaleTag:
@@ -124,78 +218,31 @@ bool GeoTIFF::readEntry(TIFFFile &file, Ctx &ctx) const
 	return true;
 }
 
-bool GeoTIFF::readIFD(TIFFFile &file, quint32 offset, Ctx &ctx) const
+bool GeoTIFF::readIFD(TIFFFile &file, qint64 offset, Ctx &ctx)
 {
-	quint16 count;
+	qint64 count;
 
 	if (!file.seek(offset))
 		return false;
-	if (!file.readValue(count))
-		return false;
+	if (file.isBigTIFF()) {
+		if (!file.readValue(count))
+			return false;
+	} else {
+		quint16 count16;
+		if (!file.readValue(count16))
+			return false;
+		count = count16;
+	}
 
-	for (quint16 i = 0; i < count; i++)
+	for (qint64 i = 0; i < count; i++)
 		if (!readEntry(file, ctx))
 			return false;
 
 	return true;
 }
 
-bool GeoTIFF::readScale(TIFFFile &file, quint32 offset, PointD &scale) const
-{
-	if (!file.seek(offset))
-		return false;
-
-	if (!file.readValue(scale.rx()))
-		return false;
-	if (!file.readValue(scale.ry()))
-		return false;
-
-	return true;
-}
-
-bool GeoTIFF::readTiepoints(TIFFFile &file, quint32 offset, quint32 count,
-  QList<ReferencePoint> &points) const
-{
-	double z, pz;
-	PointD xy, pp;
-
-	if (!file.seek(offset))
-		return false;
-
-	for (quint32 i = 0; i < count; i++) {
-		if (!file.readValue(xy.rx()))
-			return false;
-		if (!file.readValue(xy.ry()))
-			return false;
-		if (!file.readValue(z))
-			return false;
-
-		if (!file.readValue(pp.rx()))
-			return false;
-		if (!file.readValue(pp.ry()))
-			return false;
-		if (!file.readValue(pz))
-			return false;
-
-		points.append(ReferencePoint(xy, pp));
-	}
-
-	return true;
-}
-
-bool GeoTIFF::readMatrix(TIFFFile &file, quint32 offset, double matrix[16]) const
-{
-	if (!file.seek(offset))
-		return false;
-
-	for (int i = 0; i < 16; i++)
-		if (!file.readValue(matrix[i]))
-			return false;
-
-	return true;
-}
-
-bool GeoTIFF::readKeys(TIFFFile &file, Ctx &ctx, QMap<quint16, Value> &kv) const
+bool GeoTIFF::readKeys(TIFFFile &file, Ctx &ctx, QMap<quint16, Value> &kv,
+  QVector<double> &toWGS84)
 {
 	GeoKeyHeader header;
 	GeoKeyEntry entry;
@@ -260,10 +307,19 @@ bool GeoTIFF::readKeys(TIFFFile &file, Ctx &ctx, QMap<quint16, Value> &kv) const
 			case ProjFalseOriginEastingGeoKey:
 			case ProjFalseOriginNorthingGeoKey:
 			case ProjStraightVertPoleLongGeoKey:
+			case GeogSemiMajorAxisGeoKey:
+			case GeogInvFlatteningGeoKey:
+				if (entry.TIFFTagLocation == 0 || entry.Count != 1)
+					return false;
 				if (!readGeoValue(file, ctx.values, entry.ValueOffset,
 				  value.DOUBLE))
 					return false;
 				kv.insert(entry.KeyID, value);
+				break;
+			case GeogTOWGS84GeoKey:
+				toWGS84.resize(entry.Count);
+				if (!readGeoArray(file, ctx.values, entry.ValueOffset, toWGS84))
+					return false;
 				break;
 			default:
 				break;
@@ -273,23 +329,23 @@ bool GeoTIFF::readKeys(TIFFFile &file, Ctx &ctx, QMap<quint16, Value> &kv) const
 	return true;
 }
 
-bool GeoTIFF::readGeoValue(TIFFFile &file, quint32 offset, quint16 index,
-  double &val) const
+bool GeoTIFF::isWebMercator(const QMap<quint16, Value> &kv)
 {
-	qint64 pos = file.pos();
-
-	if (!file.seek(offset + index * sizeof(double)))
-		return false;
-	if (!file.readValue(val))
-		return false;
-
-	if (!file.seek(pos))
-		return false;
-
-	return true;
+	return (kv.value(ProjectedCSTypeGeoKey).SHORT == 32767
+	  && kv.value(ProjectionGeoKey).SHORT == 32767
+	  && kv.value(ProjCoordTransGeoKey).SHORT == 7
+	  && kv.value(ProjLinearUnitsGeoKey).SHORT == 9001
+	  && kv.value(GeogAngularUnitsGeoKey).SHORT == 9102
+	  && kv.value(ProjNatOriginLongGeoKey).DOUBLE == 0
+	  && kv.value(ProjNatOriginLatGeoKey).DOUBLE == 0
+	  && kv.value(ProjFalseEastingGeoKey).DOUBLE == 0
+	  && kv.value(ProjFalseNorthingGeoKey).DOUBLE == 0
+	  && kv.value(ProjScaleAtNatOriginGeoKey).DOUBLE == 1.0
+	  && kv.value(GeographicTypeGeoKey).SHORT == 4326);
 }
 
-GCS GeoTIFF::geographicCS(QMap<quint16, Value> &kv)
+GCS GeoTIFF::geographicCS(const QMap<quint16, Value> &kv,
+  const QVector<double> &toWGS84)
 {
 	GCS gcs;
 
@@ -298,30 +354,105 @@ GCS GeoTIFF::geographicCS(QMap<quint16, Value> &kv)
 		if (gcs.isNull())
 			_errorString = QString("%1: unknown GCS")
 			  .arg(kv.value(GeographicTypeGeoKey).SHORT);
-	} else if (IS_SET(kv, GeogGeodeticDatumGeoKey)
-	  || kv.value(GeogEllipsoidGeoKey).SHORT == 7019
-	  || kv.value(GeogEllipsoidGeoKey).SHORT == 7030) {
-		int pm = IS_SET(kv, GeogPrimeMeridianGeoKey)
+	} else if (IS_SET(kv, GeogGeodeticDatumGeoKey)) {
+		int gd = kv.value(GeogGeodeticDatumGeoKey).SHORT;
+		int pmc = IS_SET(kv, GeogPrimeMeridianGeoKey)
 		  ? kv.value(GeogPrimeMeridianGeoKey).SHORT : 8901;
-		int au = IS_SET(kv, GeogAngularUnitsGeoKey)
+		int auc = IS_SET(kv, GeogAngularUnitsGeoKey)
 		  ? kv.value(GeogAngularUnitsGeoKey).SHORT : 9102;
 
-		// If only the ellipsoid is defined and it is GRS80 or WGS84, handle
-		// such definition as a WGS84 geodetic datum.
-		int gd = IS_SET(kv, GeogGeodeticDatumGeoKey)
-		  ? kv.value(GeogGeodeticDatumGeoKey).SHORT : 6326;
+		if (PrimeMeridian(pmc).isNull()) {
+			_errorString = QString("%1: unknown prime meridian").arg(pmc);
+			return gcs;
+		}
+		if (AngularUnits(auc).isNull()) {
+			_errorString = QString("%1: unknown angular units").arg(auc);
+			return gcs;
+		}
 
-		gcs = GCS::gcs(gd, pm, au);
+		gcs = GCS::gcs(gd, pmc, auc);
 		if (gcs.isNull())
-			_errorString = QString("%1+%2+%3: unknown geodetic datum + prime"
-			  " meridian + units combination").arg(gd).arg(pm).arg(au);
+			_errorString = QString("%1: unknown geodetic datum").arg(gd);
+	} else if (IS_SET(kv, GeogEllipsoidGeoKey)) {
+		int ec = kv.value(GeogEllipsoidGeoKey).SHORT;
+		int pmc = IS_SET(kv, GeogPrimeMeridianGeoKey)
+		  ? kv.value(GeogPrimeMeridianGeoKey).SHORT : 8901;
+		int auc = IS_SET(kv, GeogAngularUnitsGeoKey)
+		  ? kv.value(GeogAngularUnitsGeoKey).SHORT : 9102;
+
+		Ellipsoid e(Ellipsoid::ellipsoid(ec));
+		if (!e.isValid()) {
+			_errorString = QString("%1: unknown ellipsoid").arg(ec);
+			return gcs;
+		}
+
+		Datum datum;
+		if (toWGS84.size() == 3)
+			datum = Datum(e, toWGS84.at(0), toWGS84.at(1), toWGS84.at(2));
+		else if (toWGS84.size() == 7)
+			datum = Datum(e, toWGS84.at(0), toWGS84.at(1), toWGS84.at(2),
+			  -toWGS84.at(3), -toWGS84.at(4), -toWGS84.at(5), toWGS84.at(6));
+		else if (ec == 7019 || ec == 7030)
+			datum = Datum::WGS84();
+		else {
+			_errorString = "Invalid/missing TOWGS84 parameters";
+			return gcs;
+		}
+
+		PrimeMeridian pm(pmc);
+		if (pm.isNull()) {
+			_errorString = QString("%1: unknown prime meridian").arg(pmc);
+			return gcs;
+		}
+		AngularUnits au(auc);
+		if (au.isNull()) {
+			_errorString = QString("%1: unknown angular units").arg(auc);
+			return gcs;
+		}
+
+		gcs = GCS(datum, pm, au);
+	} else if (kv.contains(GeogSemiMajorAxisGeoKey)
+	  && kv.contains(GeogInvFlatteningGeoKey)) {
+		Ellipsoid e(kv.value(GeogSemiMajorAxisGeoKey).DOUBLE,
+		  1.0 / kv.value(GeogInvFlatteningGeoKey).DOUBLE);
+		int pmc = IS_SET(kv, GeogPrimeMeridianGeoKey)
+		  ? kv.value(GeogPrimeMeridianGeoKey).SHORT : 8901;
+		int auc = IS_SET(kv, GeogAngularUnitsGeoKey)
+		  ? kv.value(GeogAngularUnitsGeoKey).SHORT : 9102;
+
+		Datum datum;
+		if (toWGS84.size() == 3)
+			datum = Datum(e, toWGS84.at(0), toWGS84.at(1), toWGS84.at(2));
+		else if (toWGS84.size() == 7)
+			datum = Datum(e, toWGS84.at(0), toWGS84.at(1), toWGS84.at(2),
+			  -toWGS84.at(3), -toWGS84.at(4), -toWGS84.at(5), toWGS84.at(6));
+		else if (e == Ellipsoid::WGS84() || e == Ellipsoid::GRS80())
+			datum = Datum::WGS84();
+		else {
+			_errorString = "Invalid/missing TOWGS84 parameters";
+			return gcs;
+		}
+
+		PrimeMeridian pm(pmc);
+		if (pm.isNull()) {
+			_errorString = QString("%1: unknown prime meridian").arg(pmc);
+			return gcs;
+		}
+		AngularUnits au(auc);
+		if (au.isNull()) {
+			_errorString = QString("%1: unknown angular units").arg(auc);
+			return gcs;
+		}
+
+		gcs = GCS(datum, pm, au);
 	} else
 		_errorString = "Can not determine GCS";
 
 	return gcs;
 }
 
-Conversion::Method GeoTIFF::coordinateTransformation(QMap<quint16, Value> &kv)
+Conversion::Method GeoTIFF::coordinateTransformation(
+  const QMap<quint16, Value> &kv)
 {
 	if (!IS_SET(kv, ProjCoordTransGeoKey)) {
 		_errorString = "Missing coordinate transformation method";
@@ -356,7 +487,8 @@ Conversion::Method GeoTIFF::coordinateTransformation(QMap<quint16, Value> &kv)
 	}
 }
 
-bool GeoTIFF::projectedModel(QMap<quint16, Value> &kv)
+bool GeoTIFF::projectedModel(const QMap<quint16, Value> &kv,
+  const QVector<double> &toWGS84)
 {
 	if (IS_SET(kv, ProjectedCSTypeGeoKey)) {
 		PCS pcs(PCS::pcs(kv.value(ProjectedCSTypeGeoKey).SHORT));
@@ -367,7 +499,7 @@ bool GeoTIFF::projectedModel(QMap<quint16, Value> &kv)
 		}
 		_projection = Projection(pcs);
 	} else if (IS_SET(kv, ProjectionGeoKey)) {
-		GCS gcs(geographicCS(kv));
+		GCS gcs(geographicCS(kv, toWGS84));
 		if (gcs.isNull())
 			return false;
 		Conversion c(Conversion::conversion(kv.value(ProjectionGeoKey).SHORT));
@@ -380,7 +512,7 @@ bool GeoTIFF::projectedModel(QMap<quint16, Value> &kv)
 	} else {
 		double lat0, lon0, scale, fe, fn, sp1, sp2;
 
-		GCS gcs(geographicCS(kv));
+		GCS gcs(geographicCS(kv, toWGS84));
 		if (gcs.isNull())
 			return false;
 		Conversion::Method method(coordinateTransformation(kv));
@@ -454,18 +586,38 @@ bool GeoTIFF::projectedModel(QMap<quint16, Value> &kv)
 
 		Conversion::Setup setup(lat0, lon0, scale, fe, fn, sp1, sp2);
 		_projection = Projection(PCS(gcs, Conversion(method, setup, lu)));
+		if (!_projection.isValid()) {
+			_errorString = "Invalid/incomplete projection parameters";
+			return false;
+		}
 	}
 
 	return true;
 }
 
-bool GeoTIFF::geographicModel(QMap<quint16, Value> &kv)
+bool GeoTIFF::geographicModel(const QMap<quint16, Value> &kv,
+  const QVector<double> &toWGS84)
 {
-	GCS gcs(geographicCS(kv));
+	GCS gcs(geographicCS(kv, toWGS84));
 	if (gcs.isNull())
 		return false;
 
 	_projection = Projection(gcs);
+
+	return true;
+}
+
+static bool nextIFD(TIFFFile &file, qint64 &offset)
+{
+	if (file.isBigTIFF()) {
+		if (!file.readValue(offset))
+			return false;
+	} else {
+		quint32 offset32;
+		if (!file.readValue(offset32))
+			return false;
+		offset = offset32;
+	}
 
 	return true;
 }
@@ -475,6 +627,7 @@ GeoTIFF::GeoTIFF(const QString &path)
 	QList<ReferencePoint> points;
 	PointD scale;
 	QMap<quint16, Value> kv;
+	QVector<double> toWGS84;
 	Ctx ctx;
 
 
@@ -490,9 +643,13 @@ GeoTIFF::GeoTIFF(const QString &path)
 		return;
 	}
 
-	for (quint32 ifd = tiff.ifd(); ifd; ) {
-		if (!readIFD(tiff, ifd, ctx) || !tiff.readValue(ifd)) {
+	for (qint64 ifd = tiff.ifd(); ifd; ) {
+		if (!readIFD(tiff, ifd, ctx)) {
 			_errorString = "Invalid IFD";
+			return;
+		}
+		if (!nextIFD(tiff, ifd)) {
+			_errorString = "Error reading next IFD offset";
 			return;
 		}
 	}
@@ -515,23 +672,31 @@ GeoTIFF::GeoTIFF(const QString &path)
 		}
 	}
 
-	if (!readKeys(tiff, ctx, kv)) {
+	if (!readKeys(tiff, ctx, kv, toWGS84)) {
 		_errorString = "Error reading Geo key/value";
 		return;
 	}
 
 	switch (kv.value(GTModelTypeGeoKey).SHORT) {
 		case ModelTypeProjected:
-			if (!projectedModel(kv))
+			if (!projectedModel(kv, toWGS84))
 				return;
 			break;
 		case ModelTypeGeographic:
-			if (!geographicModel(kv))
+			if (!geographicModel(kv, toWGS84))
 				return;
 			break;
 		case ModelTypeGeocentric:
 			_errorString = "Geocentric models are not supported";
 			return;
+		case ModelTypeUserDefined:
+			if (isWebMercator(kv))
+				_projection = Projection(PCS::pcs(3857));
+			else {
+				_errorString = "Unknown user-defined model";
+				return;
+			}
+			break;
 		default:
 			_errorString = "Unknown/missing model type";
 			return;

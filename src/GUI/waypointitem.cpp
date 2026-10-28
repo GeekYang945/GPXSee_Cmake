@@ -1,7 +1,6 @@
 #include <QApplication>
 #include <QPainter>
 #include <QGraphicsSceneMouseEvent>
-#include <QLabel>
 #include "font.h"
 #include "popup.h"
 #include "waypointitem.h"
@@ -23,39 +22,42 @@ ToolTip WaypointItem::info(bool extended) const
 	QLocale l;
 
 	if (!_waypoint.name().isEmpty())
-		tt.insert(qApp->translate("WaypointItem", "Name"), _waypoint.name());
-	tt.insert(qApp->translate("WaypointItem", "Coordinates"),
+		tt.insert(QCoreApplication::translate("WaypointItem", "Name"),
+		  _waypoint.name());
+	tt.insert(QCoreApplication::translate("WaypointItem", "Coordinates"),
 	  Format::coordinates(_waypoint.coordinates(), _format));
 	QPair<qreal, qreal> elevations(_waypoint.elevations(_map));
 	if (!std::isnan(elevations.first)) {
 		QString val = Format::elevation(elevations.first, _units);
 		if (!std::isnan(elevations.second))
 			val += " (" + Format::elevation(elevations.second, _units) + ")";
-		tt.insert(qApp->translate("WaypointItem", "Elevation"), val);
+		tt.insert(QCoreApplication::translate("WaypointItem", "Elevation"), val);
 	}
 	if (_waypoint.timestamp().isValid()) {
 		QDateTime date(_waypoint.timestamp().toTimeZone(_timeZone));
-		tt.insert(qApp->translate("WaypointItem", "Date"),
+		tt.insert(QCoreApplication::translate("WaypointItem", "Date"),
 		  l.toString(date.date(), QLocale::ShortFormat) + " "
 			+ date.time().toString("h:mm:ss"));
 	}
 	if (!_waypoint.description().isEmpty())
-		tt.insert(qApp->translate("WaypointItem", "Description"),
+		tt.insert(QCoreApplication::translate("WaypointItem", "Description"),
 		  _waypoint.description());
 	if (!_waypoint.comment().isEmpty()
 	  && _waypoint.comment() != _waypoint.description())
-		tt.insert(qApp->translate("WaypointItem", "Comment"),
+		tt.insert(QCoreApplication::translate("WaypointItem", "Comment"),
 		  _waypoint.comment());
 	if (!_waypoint.symbol().isEmpty())
-		tt.insert(qApp->translate("WaypointItem", "Symbol"), _waypoint.symbol());
+		tt.insert(QCoreApplication::translate("WaypointItem", "Symbol"),
+		  _waypoint.symbol());
 	if (!_waypoint.address().isEmpty()) {
 		QString addr(_waypoint.address());
 		addr.replace('\n', "<br/>");
 		addr = "<address>" + addr + "</address>";
-		tt.insert(qApp->translate("WaypointItem", "Address"), addr);
+		tt.insert(QCoreApplication::translate("WaypointItem", "Address"), addr);
 	}
 	if (!_waypoint.phone().isEmpty())
-		tt.insert(qApp->translate("WaypointItem", "Phone"), _waypoint.phone());
+		tt.insert(QCoreApplication::translate("WaypointItem", "Phone"),
+		  _waypoint.phone());
 	if (!_waypoint.links().isEmpty()) {
 		QString links;
 		for (int i = 0; i < _waypoint.links().size(); i++) {
@@ -65,10 +67,11 @@ ToolTip WaypointItem::info(bool extended) const
 			if (i != _waypoint.links().size() - 1)
 				links.append("<br/>");
 		}
-		tt.insert(qApp->translate("WaypointItem", "Links"), links);
+		tt.insert(QCoreApplication::translate("WaypointItem", "Links"), links);
 	}
 
 	tt.setImages(_waypoint.images());
+	tt.setVideo(_waypoint.video());
 
 	return tt;
 }
@@ -275,10 +278,10 @@ void WaypointItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 
 void WaypointItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-	GraphicsScene *gs = dynamic_cast<GraphicsScene *>(scene());
+	const GraphicsScene *gs = dynamic_cast<GraphicsScene*>(scene());
 	if (gs)
 		Popup::show(event->screenPos(), info(gs->showExtendedInfo()),
 		  event->widget());
-	/* Do not propagate the event any further as lower stacked items (path
-	   items) would replace the popup with their own popup */
+
+	event->accept();
 }

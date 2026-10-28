@@ -7,6 +7,8 @@
 
 #define deg2rad(d) (((d)*M_PI)/180.0)
 #define rad2deg(d) (((d)*180.0)/M_PI)
+#define isLat(lat) (((lat) >= -90.0) && ((lat) <= 90.0))
+#define isLon(lon) (((lon) >= -180.0) && ((lon) <= 180.0))
 
 class Coordinates
 {
@@ -22,10 +24,9 @@ public:
 	double lat() const {return _lat;}
 
 	bool isNull() const
-	  {return std::isnan(_lon) && std::isnan(_lat);}
+	  {return (std::isnan(_lon) && std::isnan(_lat));}
 	bool isValid() const
-	  {return (_lon >= -180.0 && _lon <= 180.0
-	    && _lat >= -90.0 && _lat <= 90.0);}
+	  {return (isLon(_lon) && isLat(_lat));}
 
 	double distanceTo(const Coordinates &c) const;
 
@@ -49,9 +50,9 @@ inline bool operator<(const Coordinates &c1, const Coordinates &c2)
 		return (c1.lat() < c2.lat());
 }
 
-inline HASH_T qHash(const Coordinates &c)
+inline HASH_T qHash(const Coordinates &c, HASH_T seed = 0)
 {
-	return qHash(QPair<double, double>(c.lon(), c.lat()));
+	return qHashMulti(seed, c.lon(), c.lat());
 }
 
 #ifndef QT_NO_DEBUG

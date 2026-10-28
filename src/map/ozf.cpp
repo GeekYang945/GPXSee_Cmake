@@ -162,13 +162,13 @@ bool OZF::readTileTable()
 		zoom.palette = QVector<quint32>(256);
 		if (!read(&(zoom.palette[0]), sizeof(quint32) * 256))
 			return false;
-		for (int i = 0; i < zoom.palette.size(); i++)
-			zoom.palette[i] = Color::bgr2rgb(qFromLittleEndian(
-			  zoom.palette.at(i)));
+		for (int j = 0; j < zoom.palette.size(); j++)
+			zoom.palette[j] = Color::bgr2rgb(qFromLittleEndian(
+			  zoom.palette.at(j)));
 
 		zoom.tiles = QVector<quint32>(zoom.dim.width() * zoom.dim.height() + 1);
-		for (int i = 0; i < zoom.tiles.size(); i++)
-			if (!readValue(zoom.tiles[i]))
+		for (int j = 0; j < zoom.tiles.size(); j++)
+			if (!readValue(zoom.tiles[j]))
 				return false;
 
 		_zooms.append(zoom);
@@ -202,40 +202,40 @@ bool OZF::open()
 	return true;
 }
 
-QPixmap OZF::tile(int zoom, int x, int y)
+QPixmap *OZF::tile(int zoom, const QPoint &xy)
 {
 	Q_ASSERT(_file.isOpen());
 	Q_ASSERT(0 <= zoom && zoom < _zooms.count());
 
 	const Zoom &z = _zooms.at(zoom);
 
-	int i = (y/tileSize().height()) * z.dim.width() + (x/tileSize().width());
+	int i = (xy.y() / _tileSize) * z.dim.width() + (xy.x() / _tileSize);
 	if (i >= z.tiles.size() - 1 || i < 0)
-		return QPixmap();
+		return 0;
 
 	int size = z.tiles.at(i+1) - z.tiles.at(i);
 	if (!_file.seek(z.tiles.at(i)))
-		return QPixmap();
+		return 0;
 
-	quint32 bes = qToBigEndian(tileSize().width() * tileSize().height());
+	quint32 bes = qToBigEndian(_tileSize * _tileSize);
 	QByteArray ba;
 	ba.resize(sizeof(bes) + size);
 	memcpy(ba.data(), &bes, sizeof(bes));
 
 	if (!read(ba.data() + sizeof(bes), size, 16))
-		return QPixmap();
+		return 0;
 	QByteArray uba = qUncompress(ba);
-	if (uba.size() != tileSize().width() * tileSize().height())
-		return QPixmap();
+	if (uba.size() != _tileSize * _tileSize)
+		return 0;
 
-	QImage img((const uchar*)uba.constData(), tileSize().width(),
-	  tileSize().height(), QImage::Format_Indexed8);
+	QImage img((const uchar*)uba.constData(), _tileSize, _tileSize, _tileSize,
+	  QImage::Format_Indexed8);
 	img.setColorTable(z.palette);
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 9, 0)
-	return QPixmap::fromImage(img.mirrored());
+	return new QPixmap(QPixmap::fromImage(img.mirrored()));
 #else // QT 6.9
-	return QPixmap::fromImage(img.flipped());
+	return new QPixmap(QPixmap::fromImage(img.flipped()));
 #endif // QT 6.9
 }
 

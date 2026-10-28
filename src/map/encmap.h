@@ -2,14 +2,13 @@
 #define ENCMAP_H
 
 #include <climits>
-#include <QtConcurrent>
 #include "common/range.h"
+#include "ENC/iso8211.h"
+#include "ENC/mapdata_enc.h"
+#include "ENC/style_enc.h"
 #include "map.h"
 #include "projection.h"
 #include "transform.h"
-#include "ENC/iso8211.h"
-#include "ENC/mapdata.h"
-#include "ENC/style.h"
 
 class ENCJob;
 
@@ -33,7 +32,7 @@ public:
 	int zoomOut();
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	QPointF ll2xy(const Coordinates &c)

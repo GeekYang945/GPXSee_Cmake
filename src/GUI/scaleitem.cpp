@@ -105,18 +105,18 @@ void ScaleItem::updateCache()
 	}
 
 	if (_units == Imperial)
-		_unitsStr = _scale ? qApp->translate("ScaleItem", "mi")
-		  : qApp->translate("ScaleItem", "ft");
+		_unitsStr = _scale ? QCoreApplication::translate("ScaleItem", "mi")
+		  : QCoreApplication::translate("ScaleItem", "ft");
 	else if (_units == Nautical)
-		_unitsStr = _scale ? qApp->translate("ScaleItem", "nmi")
-		  : qApp->translate("ScaleItem", "ft");
+		_unitsStr = _scale ? QCoreApplication::translate("ScaleItem", "nmi")
+		  : QCoreApplication::translate("ScaleItem", "ft");
 	else
-		_unitsStr = _scale ? qApp->translate("ScaleItem", "km")
-		  : qApp->translate("ScaleItem", "m");
+		_unitsStr = _scale ? QCoreApplication::translate("ScaleItem", "km")
+		  : QCoreApplication::translate("ScaleItem", "m");
 	_unitsBB = fm.tightBoundingRect(_unitsStr);
 
-	QRect ss = _ticks.isEmpty() ? QRect() : _ticks.first().boundingBox;
-	QRect es = _ticks.isEmpty() ? QRect() : _ticks.last().boundingBox;
+	QRect ss = _ticks.first().boundingBox;
+	QRect es = _ticks.last().boundingBox;
 	_boundingRect = QRectF(-ss.width()/2, 0, _width * SEGMENTS + ss.width()/2
 	  + qMax(_unitsBB.width() + PADDING, es.width()/2) + 1, SCALE_HEIGHT
 	  + PADDING + ss.height() + 2*fm.descent());

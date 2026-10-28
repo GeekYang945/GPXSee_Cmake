@@ -128,19 +128,24 @@ private:
 		  {return !id.isEmpty() && rect.isValid();}
 	};
 
-	struct CTX {
-		QSet<TileMatrix> matrixes;
+	struct Layer {
+		Layer()
+		  : hasLayer(false), hasStyle(false), hasFormat(false), hasSet(false) {}
+
 		QSet<MatrixLimits> limits;
-		QString crs;
 		QString defaultStyle;
 		RectC bbox;
+		QString tileUrl;
 		bool hasLayer;
 		bool hasStyle;
 		bool hasFormat;
 		bool hasSet;
+	};
 
-		CTX() : hasLayer(false), hasStyle(false), hasFormat(false), hasSet(false)
-		  {}
+	struct CTX {
+		QSet<TileMatrix> matrixes;
+		QString crs;
+		Layer layer;
 	};
 
 	RectC wgs84BoundingBox(QXmlStreamReader &reader);
@@ -149,7 +154,7 @@ private:
 	QSet<MatrixLimits> tileMatrixSetLimits(QXmlStreamReader &reader);
 	QString style(QXmlStreamReader &reader);
 	void tileMatrixSet(QXmlStreamReader &reader, CTX &ctx);
-	void tileMatrixSetLink(QXmlStreamReader &reader, CTX &ctx);
+	void tileMatrixSetLink(QXmlStreamReader &reader, Layer &layer);
 	void layer(QXmlStreamReader &reader, CTX &ctx);
 	void contents(QXmlStreamReader &reader, CTX &ctx);
 	void capabilities(QXmlStreamReader &reader, CTX &ctx);
@@ -168,18 +173,18 @@ private:
 	bool _valid, _ready;
 	QString _errorString;
 
-	friend HASH_T qHash(const WMTS::TileMatrix &key);
-	friend HASH_T qHash(const WMTS::MatrixLimits &key);
+	friend HASH_T qHash(const WMTS::TileMatrix &key, HASH_T seed);
+	friend HASH_T qHash(const WMTS::MatrixLimits &key, HASH_T seed);
 };
 
-inline HASH_T qHash(const WMTS::TileMatrix &key)
+inline HASH_T qHash(const WMTS::TileMatrix &key, HASH_T seed = 0)
 {
-	return ::qHash(key.id);
+	return ::qHash(key.id, seed);
 }
 
-inline HASH_T qHash(const WMTS::MatrixLimits &key)
+inline HASH_T qHash(const WMTS::MatrixLimits &key, HASH_T seed = 0)
 {
-	return ::qHash(key.id);
+	return ::qHash(key.id, seed);
 }
 
 #ifndef QT_NO_DEBUG

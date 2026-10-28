@@ -114,8 +114,7 @@ bool NMEAParser::readDate(const char *data, int len, QDate &date)
 		goto error;
 
 	if (len - 4 == 2)
-		date = QDate(y + 2000 < QDate::currentDate().year()
-		  ? 2000 + y : 1900 + y, m, d);
+		date = QDate(y + 1900 < 1980 ? 2000 + y : 1900 + y, m, d);
 	else
 		date = QDate(y, m, d);
 	if (!date.isValid())
@@ -364,8 +363,12 @@ bool NMEAParser::readGGA(CTX &ctx, const char *line, int len,
 	Coordinates c(lon, lat);
 	if (c.isValid()) {
 		Trackpoint t(c);
-		if (!(ctx.time.isNull() || ctx.date.isNull()))
+		if (!(ctx.time.isNull() || ctx.date.isNull())) {
+			if (segment.size() && ctx.time < segment.last().timestamp().time()
+			  && ctx.date == segment.last().timestamp().date())
+				ctx.date = ctx.date.addDays(1);
 			t.setTimestamp(QDateTime(ctx.date, ctx.time, QTimeZone::utc()));
+		}
 		if (!std::isnan(ele))
 			t.setElevation(ele - gh);
 		segment.append(t);
@@ -487,17 +490,15 @@ bool NMEAParser::parse(QFile *file, QList<TrackData> &tracks,
 {
 	Q_UNUSED(routes);
 	Q_UNUSED(polygons);
-	qint64 len;
-	char line[80 + 2/*CRLF*/ + 1/*'\0'*/ + 1/*extra byte for limit check*/];
+	char line[1024];
 	SegmentData segment;
 	CTX ctx;
-
 
 	_errorLine = 1;
 	_errorString.clear();
 
 	while (!file->atEnd()) {
-		len = file->readLine(line, sizeof(line));
+		qint64 len = file->readLine(line, sizeof(line));
 
 		if (len < 0) {
 			_errorString = "I/O error";

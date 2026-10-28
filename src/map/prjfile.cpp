@@ -131,11 +131,11 @@ int PRJFile::getChar(CTX &ctx)
 
 void PRJFile::nextToken(CTX &ctx)
 {
-	int c, state = 0;
+	int state = 0;
 	QString flstr;
 
 	while (1) {
-		c = getChar(ctx);
+		int c = getChar(ctx);
 
 		switch (state) {
 			case 0:
@@ -302,13 +302,13 @@ void PRJFile::toWGS84(CTX &ctx, double *dx, double *dy, double *dz, double *rx,
 	*dz = ctx.number;
 	compare(ctx, NUMBER);
 	compare(ctx, COMMA);
-	*rx = -ctx.number;
+	*rx = ctx.number;
 	compare(ctx, NUMBER);
 	compare(ctx, COMMA);
-	*ry = -ctx.number;
+	*ry = ctx.number;
 	compare(ctx, NUMBER);
 	compare(ctx, COMMA);
-	*rz = -ctx.number;
+	*rz = ctx.number;
 	compare(ctx, NUMBER);
 	compare(ctx, COMMA);
 	*ds = ctx.number;
@@ -412,7 +412,15 @@ void PRJFile::datum(CTX &ctx, Datum *dtm, int *epsg)
 	optDatum(ctx, &dx, &dy, &dz, &rx, &ry, &rz, &ds, epsg);
 	compare(ctx, RBRK);
 
-	*dtm = Datum(el, dx, dy, dz, rx, ry, rz, ds);
+	if (!std::isnan(dx)) {
+		if (rx == 0 && ry == 0 && rz == 0 && ds == 0)
+			*dtm = Datum(el, dx, dy, dz);
+		else
+			*dtm = Datum(el, dx, dy, dz, -rx, -ry, -rz, ds);
+	} else if (el == Ellipsoid::WGS84() || el == Ellipsoid::GRS80())
+		*dtm = Datum::WGS84();
+	else if (*epsg <= 0)
+		qWarning("datum has no AUTHORITY or TOWGS84 info");
 }
 
 void PRJFile::unit(CTX &ctx, double *val, int *epsg)
@@ -462,12 +470,10 @@ void PRJFile::primeMeridian(CTX &ctx, PrimeMeridian *pm, int *epsg)
 
 void PRJFile::parameter(CTX &ctx, Conversion::Setup *setup)
 {
-	QString name;
-
 	if (ctx.token == PARAMETER) {
 		nextToken(ctx);
 		compare(ctx, LBRK);
-		name = ctx.string;
+		QString name(ctx.string);
 		compare(ctx, STRING);
 		compare(ctx, COMMA);
 		setParameter(setup, name, ctx.number);
@@ -628,11 +634,18 @@ void PRJFile::geographicCS(CTX &ctx, GCS *gcs)
 	optGeographicCS(ctx, &gcsEpsg);
 	compare(ctx, RBRK);
 
-	*gcs = (gcsEpsg > 0)
-	  ? GCS::gcs(gcsEpsg)
-	  : (datumEpsg > 0 && pmEpsg > 0 && auEpsg > 0)
-		 ? GCS::gcs(datumEpsg, pmEpsg, auEpsg)
-		 : GCS(dat, pm, au);
+	if (gcsEpsg > 0)
+		*gcs = GCS::gcs(gcsEpsg);
+	else if (datumEpsg > 0 && pmEpsg > 0 && auEpsg > 0)
+		*gcs = GCS::gcs(datumEpsg, pmEpsg, auEpsg);
+	else if (datumEpsg > 0 && pmEpsg > 0)
+		*gcs = GCS::gcs(datumEpsg, pmEpsg, au);
+	else if (datumEpsg > 0 && auEpsg > 0)
+		*gcs = GCS::gcs(datumEpsg, pm, auEpsg);
+	else if (datumEpsg > 0)
+		*gcs = GCS::gcs(datumEpsg, pm, au);
+	else
+		*gcs = GCS(dat, pm, au);
 }
 
 void PRJFile::horizontalCS(CTX &ctx)
@@ -771,8 +784,12 @@ PRJFile::PRJFile(const QString &fileName)
 	CS(ctx);
 
 	if (ctx.token == EOI) {
-		if (!_projection.isValid())
-			_errorString = "unknown/incomplete projection";
+		if (!_projection.isValid()) {
+			if (!_projection.gcs().isValid())
+				_errorString = "unknow/incomplete GCS";
+			else
+				_errorString = "unknown/incomplete projection";
+		}
 	} else {
 		error(ctx);
 		_projection = Projection();

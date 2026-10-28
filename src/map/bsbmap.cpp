@@ -288,7 +288,7 @@ bool BSBMap::createTransform(QList<ReferencePoint> &points)
 }
 
 bool BSBMap::createProjection(const QString &datum, const QString &proj,
-  double params[9], const Coordinates &c)
+  const double params[9], const Coordinates &c)
 {
 	GCS gcs;
 	PCS pcs;
@@ -390,7 +390,8 @@ QImage BSBMap::readImage()
 }
 
 BSBMap::BSBMap(const QString &fileName, QObject *parent)
-  : Map(fileName, parent), _img(0), _mapRatio(1.0), _dataOffset(-1), _valid(false)
+  : Map(fileName, parent), _img(0), _mapRatio(1.0), _dataOffset(-1),
+  _valid(false)
 {
 	QFile file(fileName);
 
@@ -436,10 +437,13 @@ void BSBMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 }
 
 void BSBMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 

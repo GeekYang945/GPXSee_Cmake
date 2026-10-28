@@ -10,9 +10,13 @@
 #include <QFormLayout>
 #include <QApplication>
 #include "tooltip.h"
-#include "thumbnail.h"
+#include "imagethumbnail.h"
+#include "videothumbnail.h"
 #include "flowlayout.h"
 #include "popup.h"
+
+#define THUMBNAIL_LIMIT 240
+#define POPUP_LIMIT     960
 
 static inline QPointF mousePos(QEvent *ev)
 {
@@ -23,11 +27,27 @@ static inline QPointF mousePos(QEvent *ev)
 #endif // QT 6
 }
 
+static void addRow(const KV<QString, QString> &kv, QFormLayout *layout)
+{
+	QLabel *k = new QLabel(kv.key() + ":");
+	k->setTextFormat(Qt::PlainText);
+	k->setAlignment(Qt::AlignTop);
+	k->setStyleSheet("font-weight: bold");
+	QLabel *v = new QLabel(kv.value());
+	v->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
+	v->setTextFormat(Qt::RichText);
+	v->setAlignment(Qt::AlignTop);
+	v->setTextInteractionFlags(Qt::TextBrowserInteraction);
+	v->setOpenExternalLinks(true);
+	v->setWordWrap(true);
+
+	layout->addRow(k, v);
+}
+
 class PopupFrame : public QFrame
 {
 public:
 	PopupFrame(const ToolTip &toolTip, QWidget *parent = 0);
-	~PopupFrame();
 
 	const ToolTip &toolTip() const {return _toolTip;}
 
@@ -54,11 +74,8 @@ PopupFrame *PopupFrame::_instance = 0;
 
 PopupFrame::PopupFrame(const ToolTip &toolTip, QWidget *parent)
   : QFrame(parent, Qt::ToolTip | Qt::BypassGraphicsProxyWidget
-    | Qt::WindowDoesNotAcceptFocus), _toolTip(toolTip)
+	| Qt::WindowDoesNotAcceptFocus), _toolTip(toolTip)
 {
-	delete _instance;
-	_instance = this;
-
 	setForegroundRole(QPalette::ToolTipText);
 	setBackgroundRole(QPalette::ToolTipBase);
 	setPalette(QToolTip::palette());
@@ -71,13 +88,6 @@ PopupFrame::PopupFrame(const ToolTip &toolTip, QWidget *parent)
 	createLayout(toolTip);
 
 	setMouseTracking(true);
-
-	qApp->installEventFilter(this);
-}
-
-PopupFrame::~PopupFrame()
-{
-	_instance = 0;
 }
 
 void PopupFrame::createLayout(const ToolTip &content)
@@ -88,12 +98,16 @@ void PopupFrame::createLayout(const ToolTip &content)
 	layout->setContentsMargins(margin, margin, margin, margin);
 	layout->setSpacing(0);
 
-	if (!content.images().isEmpty()) {
+	if (!content.video().isEmpty())
+		layout->addWidget(new VideoThumbnail(content.video(), THUMBNAIL_LIMIT),
+		  0, Qt::AlignHCenter);
+	else if (!content.images().isEmpty()) {
 		FlowLayout *imagesLayout = new FlowLayout(0, 2, 2);
-		int size = qMin(960/content.images().size(), 240);
+		int size = qMin(POPUP_LIMIT/content.images().size(), THUMBNAIL_LIMIT);
 
 		for (int i = 0; i < content.images().size(); i++)
-			imagesLayout->addWidget(new Thumbnail(content.images().at(i), size));
+			imagesLayout->addWidget(new ImageThumbnail(content.images().at(i),
+			  size));
 
 		layout->addLayout(imagesLayout);
 	}
@@ -104,22 +118,8 @@ void PopupFrame::createLayout(const ToolTip &content)
 		textLayout->setHorizontalSpacing(5);
 		textLayout->setVerticalSpacing(2);
 
-		for (int i = 0; i < content.list().count(); i++) {
-			QLabel *key = new QLabel(content.list().at(i).key() + ":");
-			key->setTextFormat(Qt::PlainText);
-			key->setAlignment(Qt::AlignTop);
-			key->setStyleSheet("font-weight: bold");
-			QLabel *value = new QLabel(content.list().at(i).value());
-			value->setSizePolicy(QSizePolicy::MinimumExpanding,
-			  QSizePolicy::Preferred);
-			value->setTextFormat(Qt::RichText);
-			value->setAlignment(Qt::AlignTop);
-			value->setTextInteractionFlags(Qt::TextBrowserInteraction);
-			value->setOpenExternalLinks(true);
-			value->setWordWrap(true);
-
-			textLayout->addRow(key, value);
-		}
+		for (int i = 0; i < content.list().count(); i++)
+			addRow(content.list().at(i), textLayout);
 
 		layout->addLayout(textLayout);
 	}
@@ -142,6 +142,7 @@ void PopupFrame::timerEvent(QTimerEvent *event)
 	if (event->timerId() == _timer.timerId()) {
 		_timer.stop();
 		deleteLater();
+		PopupFrame::_instance = 0;
 	}
 }
 
@@ -151,27 +152,27 @@ bool PopupFrame::eventFilter(QObject *o, QEvent *ev)
 
 	switch (ev->type()) {
 		case QEvent::KeyPress:
-		case QEvent::KeyRelease: {
-			const int key = static_cast<QKeyEvent *>(ev)->key();
+		case QEvent::KeyRelease:
+			{const int key = static_cast<QKeyEvent *>(ev)->key();
 			if (key == Qt::Key_Escape) {
 				deleteLater();
+				PopupFrame::_instance = 0;
 				return true;
-			}
+			}}
 			break;
-		}
 		case QEvent::FocusIn:
 		case QEvent::FocusOut:
 		case QEvent::WindowActivate:
 		case QEvent::WindowDeactivate:
 		case QEvent::Close:
 			deleteLater();
+			PopupFrame::_instance = 0;
 			break;
-		case QEvent::MouseMove: {
-			QRectF r(geometry().adjusted(-5, -20, 5, 20));
+		case QEvent::MouseMove:
+			{QRectF r(geometry().adjusted(-5, -20, 5, 20));
 			if (!r.contains(mousePos(ev)))
-				deleteAfterTimer();
+				deleteAfterTimer();}
 			break;
-		}
 		default:
 			break;
 	}
@@ -208,26 +209,35 @@ void PopupFrame::deleteAfterTimer()
 
 void Popup::show(const QPoint &pos, const ToolTip &toolTip, QWidget *w)
 {
+	bool installFilter = false;
+
 	if (toolTip.isEmpty())
 		return;
 
 	if (PopupFrame::_instance) {
-		if (toolTip == PopupFrame::_instance->toolTip())
+		if (toolTip == PopupFrame::_instance->toolTip()
+		  && PopupFrame::_instance->parent() == w)
 			PopupFrame::_instance->stopTimer();
 		else {
 			delete PopupFrame::_instance;
-			PopupFrame::_instance = new PopupFrame(toolTip);
+			PopupFrame::_instance = new PopupFrame(toolTip, w);
+			installFilter = true;
 		}
-	} else
-		PopupFrame::_instance = new PopupFrame(toolTip);
+	} else {
+		PopupFrame::_instance = new PopupFrame(toolTip, w);
+		installFilter = true;
+	}
 
 	PopupFrame::_instance->resize(PopupFrame::_instance->sizeHint());
 	PopupFrame::_instance->place(pos, w);
 	PopupFrame::_instance->showNormal();
+
+	if (installFilter)
+		qApp->installEventFilter(PopupFrame::_instance);
 }
 
 void Popup::clear()
 {
-	if (PopupFrame::_instance)
-		delete PopupFrame::_instance;
+	delete PopupFrame::_instance;
+	PopupFrame::_instance = 0;
 }

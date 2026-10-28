@@ -4,7 +4,7 @@
 #include <QPixmap>
 #include "common/textcodec.h"
 #include "section.h"
-#include "subfile.h"
+#include "subfile_img.h"
 #include "label.h"
 
 namespace IMG {
@@ -35,7 +35,7 @@ public:
 	  quint32 size, bool capitalize = true, bool convert = false);
 
 	quint8 imageIdSize() const {return _imgIdSize;}
-	QPixmap image(Handle &hdl, quint32 id) const;
+	QByteArray image(Handle &hdl, quint32 id) const;
 
 private:
 	struct Image {

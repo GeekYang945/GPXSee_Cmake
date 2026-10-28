@@ -2,7 +2,7 @@
 #define IMG_DEMFILE_H
 
 #include "common/rtree.h"
-#include "subfile.h"
+#include "subfile_img.h"
 #include "demtile.h"
 
 namespace IMG {
@@ -44,11 +44,6 @@ private:
 		qint16 maxHeight;
 		QList<DEMTile> tiles;
 	};
-
-	qint16 meters(qint16 val) const
-	{
-		return (_flags & 1) ? (qint16)qRound(val * 0.3048) : val;
-	}
 
 	quint32 _flags;
 	QVector<Level> _levels;

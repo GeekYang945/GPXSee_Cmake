@@ -1,0 +1,256 @@
+#ifndef MAPSFORGE_RASTERTILE_H
+#define MAPSFORGE_RASTERTILE_H
+
+#include <QPixmap>
+#include "map/projection.h"
+#include "map/transform.h"
+#include "map/textpointitem.h"
+#include "map/textpathitem.h"
+#include "map/matrix.h"
+#include "style_mapsforge.h"
+#include "mapdata_mapsforge.h"
+
+
+#define HILLSHADING_RENDER(ptr) \
+	static_cast<const Style::HillShadingRender*>(ptr)
+#define PATH_RENDER(ptr) \
+	static_cast<const Style::PathRender*>(ptr)
+#define POINT_RENDER(ptr) \
+	static_cast<const Style::CircleRender*>(ptr)
+
+namespace Mapsforge {
+
+class RasterTile
+{
+public:
+	RasterTile(const Projection *proj, const Transform &transform,
+	  const Style *style, MapData *data, int zoom, const QRect &rect,
+	  qreal ratio, bool hillShading)
+		: _proj(proj), _transform(transform), _style(style), _data(data),
+		_zoom(zoom), _rect(rect), _ratio(ratio), _hillShading(hillShading) {}
+
+	int zoom() const {return _zoom;}
+	QPoint xy() const {return _rect.topLeft();}
+	const QPixmap &pixmap() const {return _pixmap;}
+
+	void render();
+
+private:
+	struct PainterPath {
+		PainterPath() : path(0) {}
+
+		QPainterPath pp;
+		const MapData::Path *path;
+	};
+
+	struct Label {
+		Label(const MapData::Point *p, const QList<const QByteArray *> lbl,
+		  const Style::SymbolRender *si, const Style::TextRender *ti)
+		  : point(p), ti(ti), si(si), lbl(lbl)
+		{
+			Q_ASSERT(si || ti);
+		}
+
+		bool operator<(const Label &other) const
+		{
+			if (priority() == other.priority())
+				return point->id < other.point->id;
+			else
+				return (priority() > other.priority());
+		}
+		int priority() const {return si ? si->priority() : ti->priority();}
+
+		const MapData::Point *point;
+		const Style::TextRender *ti;
+		const Style::SymbolRender *si;
+		QList<const QByteArray *> lbl;
+	};
+
+	struct LineLabel {
+		LineLabel(const PainterPath *p, const QByteArray *lbl,
+		  const Style::SymbolRender *si, const Style::TextRender *ti)
+		  : path(p), lbl(lbl), ti(ti), si(si)
+		{
+			Q_ASSERT(si || ti);
+		}
+
+		bool operator<(const LineLabel &other) const
+		{
+			return (priority() > other.priority());
+		}
+		int priority() const {return si ? si->priority() : ti->priority();}
+
+		const PainterPath *path;
+		const QByteArray *lbl;
+		const Style::TextRender *ti;
+		const Style::SymbolRender *si;
+	};
+
+	class RenderInstruction
+	{
+	public:
+		RenderInstruction() : _render(0), _path(0), _point(0) {}
+		RenderInstruction(const Style::PathRender *render, PainterPath *path)
+		  : _render(render), _path(path), _point(0) {}
+		RenderInstruction(const Style::CircleRender *render,
+		  const MapData::Point *point) : _render(render), _path(0),
+		  _point(point) {}
+		RenderInstruction(const Style::HillShadingRender *render)
+		  : _render(render), _path(0), _point(0) {}
+
+		bool operator<(const RenderInstruction &other) const
+		{
+			if (layer() == other.layer())
+				return zOrder() < other.zOrder();
+			else
+				return (layer() < other.layer());
+		}
+
+		const Style::PathRender *pathRender() const
+		  {return PATH_RENDER(_render);}
+		const Style::CircleRender *circleRender() const
+		  {return POINT_RENDER(_render);}
+		const Style::HillShadingRender *hillShadingRender() const
+		  {return HILLSHADING_RENDER(_render);}
+
+		PainterPath *path() const {return _path;}
+		const MapData::Point *point() const {return _point;}
+
+	private:
+		int layer() const
+		{
+			if (_path)
+				return _path->path->point.layer;
+			else if (_point)
+				return _point->layer;
+			else
+				return HILLSHADING_RENDER(_render)->layer();
+		}
+		int zOrder() const
+		{
+			if (_path)
+				return PATH_RENDER(_render)->zOrder();
+			else if (_point)
+				return POINT_RENDER(_render)->zOrder();
+			else
+				return HILLSHADING_RENDER(_render)->zOrder();
+		}
+
+		const Style::Render *_render;
+		PainterPath *_path;
+		const MapData::Point *_point;
+	};
+
+	struct PathKey {
+		PathKey(bool closed, const QVector<MapData::Tag> &tags)
+		  : closed(closed), tags(tags) {}
+		bool operator==(const PathKey &other) const
+		{
+			return (closed == other.closed && tags == other.tags);
+		}
+
+		bool closed;
+		const QVector<MapData::Tag> &tags;
+	};
+
+	struct PointKey {
+		PointKey(bool path, const QVector<MapData::Tag> &tags)
+		  : path(path), tags(tags) {}
+		bool operator==(const PointKey &other) const
+		{
+			return (path == other.path && tags == other.tags);
+		}
+
+		bool path;
+		const QVector<MapData::Tag> &tags;
+	};
+
+	class PointItem : public TextPointItem
+	{
+	public:
+		PointItem(const QPoint &point, const QList<const QByteArray *> &lbl,
+		  const QFont *font, const QImage *img, const QColor *color,
+		  const QColor *haloColor, TextPointItem::Anchor textAnchor)
+		  : TextPointItem(point, label(lbl), font, img, color, haloColor, 0, 0,
+		  NAN, textAnchor) {}
+		PointItem(const QPoint &point, const QByteArray *label,
+		  const QFont *font, const QColor *color, const QColor *bgColor)
+		  : TextPointItem(point, label ? new QString(*label) : 0, font, 0,
+		  color, 0, bgColor, 0, NAN, TextPointItem::Center) {}
+		~PointItem() {delete _text;}
+
+	private:
+		static QString *label(const QList<const QByteArray*> &ll)
+		{
+			if (ll.isEmpty())
+				return 0;
+
+			QString *ret = new QString(*ll.first());
+			for (int i = 1; i < ll.size(); i++)
+				ret->append("\n" + *ll.at(i));
+
+			return ret;
+		}
+	};
+
+	class PathItem : public TextPathItem
+	{
+	public:
+		PathItem(const QPainterPath &line, const QByteArray *label,
+		  const QImage *img, const QRect &tileRect, const QFont *font,
+		  const QColor *color, const QColor *haloColor, bool rotate)
+		  : TextPathItem(line, label ? new QString(*label) : 0, tileRect, font,
+		  color, haloColor, img, rotate) {}
+		~PathItem() {delete _text;}
+	};
+
+	friend HASH_T qHash(const RasterTile::PathKey &key, HASH_T seed);
+	friend HASH_T qHash(const RasterTile::PointKey &key, HASH_T seed);
+
+	void fetchData(QList<MapData::Path> &paths,
+	  QList<MapData::Point> &points, bool &hasDEM) const;
+	void pathInstructions(QVector<PainterPath> &paths,
+	  QVector<RasterTile::RenderInstruction> &instructions) const;
+	void circleInstructions(const QList<MapData::Point> &points,
+	  QVector<RasterTile::RenderInstruction> &instructions) const;
+	void hillShadingInstructions(
+	  QVector<RasterTile::RenderInstruction> &instructions) const;
+	QPointF ll2xy(const Coordinates &c) const
+	  {return _transform.proj2img(_proj->ll2xy(c));}
+	Coordinates xy2ll(const QPointF &p) const
+	  {return _proj->xy2ll(_transform.img2proj(p));}
+	void processLabels(const QList<MapData::Point> &points,
+	  QList<TextItem*> &textItems) const;
+	void processLineLabels(QVector<PainterPath> &paths,
+	  QList<TextItem*> &textItems) const;
+	QPainterPath painterPath(const Polygon &polygon, bool curve) const;
+	void drawTextItems(QPainter *painter, const QList<TextItem*> &textItems);
+	void drawPaths(QPainter *painter, const QList<MapData::Point> &points,
+	  QVector<PainterPath> &paths, bool hillShading);
+
+	MatrixD elevation(int extend) const;
+
+	const Projection *_proj;
+	Transform _transform;
+	const Style *_style;
+	MapData *_data;
+	int _zoom;
+	QRect _rect;
+	qreal _ratio;
+	QPixmap _pixmap;
+	bool _hillShading;
+};
+
+inline HASH_T qHash(const RasterTile::PathKey &key, HASH_T seed = 0)
+{
+	return qHashMulti(seed, key.closed, key.tags);
+}
+
+inline HASH_T qHash(const RasterTile::PointKey &key, HASH_T seed = 0)
+{
+	return qHashMulti(seed, key.path, key.tags);
+}
+
+}
+
+#endif // MAPSFORGE_RASTERTILE_H

@@ -3,7 +3,7 @@
 #include "common/hash.h"
 #include "deltastream.h"
 #include "huffmanstream.h"
-#include "style.h"
+#include "style_img.h"
 #include "lblfile.h"
 #include "netfile.h"
 #include "nodfile.h"
@@ -53,8 +53,8 @@ bool RGNFile::readRasterInfo(Handle &hdl, const LBLFile *lbl, quint32 size,
 	  && readUInt32(hdl, bottom) && readUInt32(hdl, left)))
 		return false;
 
-	poly->raster = Raster(lbl, id, QRect(QPoint(left, top), QPoint(right,
-	  bottom)));
+	poly->raster = Raster(lbl->image(hdl, id), QRect(QPoint(left, top),
+	  QPoint(right, bottom)));
 
 	return true;
 }
@@ -210,7 +210,7 @@ bool RGNFile::readLightInfo(Handle &hdl, quint8 flags, quint32 size,
 
 		point->lights.append(Light(sectors));
 	} else {
-		quint8 v1, v2, range;
+		quint8 v1, range;
 
 		if (!(size >= 1 && readUInt8(hdl, v1)))
 			return false;
@@ -218,6 +218,7 @@ bool RGNFile::readLightInfo(Handle &hdl, quint8 flags, quint32 size,
 
 		range = v1 & 0x1f;
 		if ((v1 & 0x1f) == 0x1f) {
+			quint8 v2;
 			if (!(size >= 1 && readUInt8(hdl, v2)))
 				return false;
 			size--;
@@ -508,7 +509,7 @@ bool RGNFile::readLclLights(Handle &hdl, quint32 &size, quint32 lights,
 bool RGNFile::readLclNavaid(Handle &hdl, quint32 size,
   MapData::Point *point) const
 {
-	quint32 unused, color, flags;
+	quint32 unused, flags;
 
 	// Discard the class lights info if any (marine points may have both!)
 	point->lights.clear();
@@ -518,6 +519,7 @@ bool RGNFile::readLclNavaid(Handle &hdl, quint32 size,
 		return false;
 	size -= 4;
 	if (flags & 1) {
+		quint32 color;
 		if (!(size >= 1 && readUInt8(hdl, color)))
 			return false;
 		size--;
@@ -921,7 +923,7 @@ bool RGNFile::pointObjects(Handle &hdl, const SubDiv *subdiv,
 			point.label = lbl->label(lblHdl, labelPtr & 0x3FFFFF,
 			  labelPtr & 0x400000, !(Style::isCountry(point.type)
 			  || Style::isState(point.type)), Style::isSpot(point.type)
-			  || Style::isSummit(point.type));
+			  || Style::isLandFeature(point.type));
 		point.id = pointId(pos, point.type, point.label.text());
 
 		points->append(point);

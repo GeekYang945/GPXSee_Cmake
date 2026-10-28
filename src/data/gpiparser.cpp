@@ -396,14 +396,13 @@ static quint32 readImageInfo(DataStream &stream, Waypoint &waypoint,
 		QImageReader ir(&buf);
 
 		QByteArray id(fileName.toUtf8() + QByteArray::number(imgId++));
-		QFile imgFile(Util::tempDir().path() + "/" + QString("%0.%1").arg(
-		  QCryptographicHash::hash(id, QCryptographicHash::Sha1).toHex(),
-		  QString(ir.format())));
-		imgFile.open(QIODevice::WriteOnly);
-		imgFile.write(ba);
-		imgFile.close();
-
-		waypoint.addImage(imgFile.fileName());
+		QFile imgFile(QDir(Util::tempDir().path()).absoluteFilePath(
+		  QString("%0.%1").arg(QCryptographicHash::hash(id,
+		  QCryptographicHash::Sha1).toHex(), QString(ir.format()))));
+		if (imgFile.open(QIODevice::WriteOnly)) {
+			if (imgFile.write(ba) == ba.size())
+				waypoint.addImage(imgFile.fileName());
+		}
 	}
 
 	if (size + 5 != rh.size)
@@ -618,25 +617,32 @@ static quint32 readSymbol(DataStream &stream, QPixmap &pixmap)
 	}
 	if (paletteSize) {
 		quint32 rgb;
-		palette.resize(paletteSize);
+		if (paletteSize <= 256)
+			palette.resize(paletteSize);
 		for (quint32 i = 0; i < paletteSize; i++) {
 			stream >> rgb;
-			palette[i] = (transparent && rgb == bgColor)
-			  ? QRgb(0)
-			  : Color::rgb((rgb & 0x000000FF), (rgb & 0x0000FF00) >> 8,
-			    (rgb & 0x00FF0000) >> 16);
+			if (paletteSize <= 256)
+				palette[i] = (transparent && rgb == bgColor)
+				  ? QRgb(0)
+				  : Color::rgb((rgb & 0x000000FF), (rgb & 0x0000FF00) >> 8,
+					(rgb & 0x00FF0000) >> 16);
 		}
 		ds += paletteSize * 4;
 	}
 
-	if (data.size() >= lineSize * height) {
-		if (paletteSize) {
+	if (width && height && lineSize && data.size() >= lineSize * height) {
+		if (bpp == 8 && paletteSize > 0 && paletteSize <= 256
+		  && lineSize >= width) {
 			img = QImage((uchar*)data.data(), width, height, lineSize,
 			  QImage::Format_Indexed8);
 			img.setColorTable(palette);
-		} else
+		} else if (bpp == 32 && !paletteSize && lineSize >= 4 * width)
 			img = QImage((uchar*)data.data(), width, height, lineSize,
 			  QImage::Format_RGBX8888).rgbSwapped();
+		else
+			qWarning("Unknown/invalid image format: %ux%u %uB"
+			  " (bpp: %u, stride: %u, palette: %u)", width, height, imageSize,
+			  bpp, lineSize, paletteSize);
 	}
 	pixmap = QPixmap::fromImage(img);
 

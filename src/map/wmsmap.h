@@ -34,7 +34,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void clearCache();
 
 	bool isReady() const {return _wms->isReady();}
@@ -51,7 +51,8 @@ private:
 	void updateTransform();
 	qreal tileSize() const;
 	void init();
-	void drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp);
+	void drawTile(QPainter *painter, const QPixmap *pixmap,
+	  const QPointF &tp) const;
 
 	QString _name;
 	WMS *_wms;

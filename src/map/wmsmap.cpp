@@ -1,13 +1,13 @@
 #include <QtMath>
 #include <QDir>
 #include <QPainter>
-#include <QPixmapCache>
-#include <QtConcurrent>
+#include <QtConcurrentMap>
 #include "common/wgs84.h"
 #include "common/rectc.h"
 #include "common/programpaths.h"
 #include "tile.h"
 #include "tileloader.h"
+#include "tilecache.h"
 #include "wmsmap.h"
 
 
@@ -74,13 +74,14 @@ WMSMap::WMSMap(const QString &fileName, const QString &name,
   : Map(fileName, parent), _name(name), _tileLoader(0), _zoom(0),
   _tileSize(tileSize), _mapRatio(1.0)
 {
-	QString tilesDir(QDir(ProgramPaths::tilesDir()).filePath(_name));
+	QDir tilesDir(QDir(ProgramPaths::tilesDir()).filePath(_name));
 
-	_tileLoader = new TileLoader(tilesDir, this);
+	_tileLoader = new TileLoader(tilesDir, QFileInfo(fileName).absoluteDir(),
+	  this);
 	_tileLoader->setHeaders(setup.headers());
 	connect(_tileLoader, &TileLoader::finished, this, &WMSMap::tilesLoaded);
 
-	_wms = new WMS(QDir(tilesDir).filePath(CAPABILITIES_FILE), setup, this);
+	_wms = new WMS(tilesDir.filePath(CAPABILITIES_FILE), setup, this);
 	connect(_wms, &WMS::downloadFinished, this, &WMSMap::wmsReady);
 	if (_wms->isReady())
 		init();
@@ -103,10 +104,13 @@ void WMSMap::wmsReady()
 }
 
 void WMSMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(out);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_mapRatio = hidpi ? deviceRatio : 1.0;
 }
@@ -114,7 +118,7 @@ void WMSMap::load(const Projection &in, const Projection &out,
 void WMSMap::clearCache()
 {
 	_tileLoader->clearCache();
-	QPixmapCache::clear();
+	TileCache::clear();
 }
 
 QRectF WMSMap::bounds()
@@ -198,8 +202,14 @@ void WMSMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 			RectD bbox = (_wms->cs().axisOrder() == CoordinateSystem::YX)
 			  ? RectD(PointD(tbr.y(), tbr.x()), PointD(ttl.y(), ttl.x()))
 			  : RectD(ttl, tbr);
+			QPoint xy(i, j);
 
-			fetchTiles.append(TileLoader::Tile(QPoint(i, j), _zoom, bbox));
+			QPixmap *pm = TileCache::object(TileCache::Key(this, _zoom, xy));
+			if (pm) {
+				QPointF tp(xy.x() * tileSize(), xy.y() * tileSize());
+				drawTile(painter, pm, tp);
+			} else
+				fetchTiles.append(TileLoader::Tile(xy, _zoom, bbox));
 		}
 	}
 
@@ -211,35 +221,37 @@ void WMSMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QList<FileTile> renderTiles;
 	for (int i = 0; i < fetchTiles.count(); i++) {
 		const TileLoader::Tile &t = fetchTiles.at(i);
-		if (t.file().isNull())
-			continue;
+		const QString &path = t.files().first();
 
-		QPixmap pm;
-		if (QPixmapCache::find(t.file(), &pm)) {
-			QPointF tp(t.xy().x() * tileSize(), t.xy().y() * tileSize());
-			drawTile(painter, pm, tp);
-		} else
-			renderTiles.append(FileTile(t.xy(), t.file()));
+		if (!(path.isNull() || path == NULLFILE))
+			renderTiles.append(FileTile(t.xy(), path));
 	}
 
-	QFuture<void> future = QtConcurrent::map(renderTiles, &FileTile::load);
-	future.waitForFinished();
+	if (!renderTiles.isEmpty()) {
+		QFuture<void> future = QtConcurrent::map(renderTiles, &FileTile::load);
+		future.waitForFinished();
 
-	for (int i = 0; i < renderTiles.size(); i++) {
-		const FileTile &mt = renderTiles.at(i);
-		QPixmap pm(mt.pixmap());
-		if (pm.isNull())
-			continue;
+		for (int i = 0; i < renderTiles.size(); i++) {
+			const FileTile &mt = renderTiles.at(i);
+			if (mt.pixmap().isNull())
+				continue;
 
-		QPixmapCache::insert(mt.file(), pm);
+			TileCache::insert(TileCache::Key(this, _zoom, mt.xy()),
+			  new QPixmap(mt.pixmap()));
 
-		QPointF tp(mt.xy().x() * tileSize(), mt.xy().y() * tileSize());
-		drawTile(painter, pm, tp);
+			QPointF tp(mt.xy().x() * tileSize(), mt.xy().y() * tileSize());
+			drawTile(painter, &mt.pixmap(), tp);
+		}
 	}
 }
 
-void WMSMap::drawTile(QPainter *painter, QPixmap &pixmap, QPointF &tp)
+void WMSMap::drawTile(QPainter *painter, const QPixmap *pixmap,
+  const QPointF &tp) const
 {
-	pixmap.setDevicePixelRatio(_mapRatio);
-	painter->drawPixmap(tp, pixmap);
+	if (_mapRatio != pixmap->devicePixelRatio()) {
+		QPixmap pm(*pixmap);
+		pm.setDevicePixelRatio(_mapRatio);
+		painter->drawPixmap(tp, pm);
+	} else
+		painter->drawPixmap(tp, *pixmap);
 }

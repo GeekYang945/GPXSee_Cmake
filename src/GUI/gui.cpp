@@ -6,6 +6,7 @@
 #include <QMessageBox>
 #include <QCheckBox>
 #include <QFileDialog>
+#include <QPrinter>
 #include <QPrintDialog>
 #include <QPainter>
 #include <QPaintEngine>
@@ -21,14 +22,18 @@
 #include <QLocale>
 #include <QMimeData>
 #include <QUrl>
-#include <QPixmapCache>
 #include <QWindow>
 #include <QScreen>
 #include <QStyle>
 #include <QTabBar>
+#include <QPushButton>
 #include <QGeoPositionInfoSource>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#include <QPermissions>
+#endif // QT 6.5
 #include "common/config.h"
 #include "common/programpaths.h"
+#include "common/util.h"
 #include "data/data.h"
 #include "data/poi.h"
 #include "map/downloader.h"
@@ -37,6 +42,8 @@
 #include "map/emptymap.h"
 #include "map/crs.h"
 #include "map/hillshading.h"
+#include "map/tilecache.h"
+#include "map/IMG/rastertile_img.h"
 #include "icons.h"
 #include "keys.h"
 #include "settings.h"
@@ -55,20 +62,21 @@
 #include "pathitem.h"
 #include "mapaction.h"
 #include "poiaction.h"
+#include "macos.h"
+#include "imagebutton.h"
 #include "gui.h"
-#ifdef Q_OS_ANDROID
-#include "common/util.h"
-#include "navigationwidget.h"
-#endif // Q_OS_ANDROID
 
+#define MAX_RECENT_FILES      10
+#define DEM_DOWNLOAD_WARNING  4
+#define DEM_DOWNLOAD_LIMIT    1024
+#define MAC_TOOLBAR_ICON_SIZE QSize(22, 22)
 
-#define MAX_RECENT_FILES  10
-#define TOOLBAR_ICON_SIZE 22
-
-GUI::GUI()
+GUI::GUI(const QString &lang)
 {
 	QString activeMap;
 	QStringList disabledPOIs, recentFiles;
+
+	_lang = lang;
 
 	_poi = new POI(this);
 	_dem = new DEMLoader(ProgramPaths::demDir(true), this);
@@ -79,12 +87,13 @@ GUI::GUI()
 	createStatusBar();
 	createActions();
 	createMenus();
-#ifdef Q_OS_ANDROID
-	createNavigation();
-#else // Q_OS_ANDROID
+#ifndef Q_OS_ANDROID
 	createToolBars();
 #endif // Q_OS_ANDROID
 	createBrowser();
+#ifdef Q_OS_ANDROID
+	createNavigation();
+#endif // Q_OS_ANDROID
 
 	_splitter = new QSplitter();
 	_splitter->setOrientation(Qt::Vertical);
@@ -99,7 +108,8 @@ GUI::GUI()
 
 	setWindowIcon(QIcon(APP_ICON));
 	setWindowTitle(APP_NAME);
-	setUnifiedTitleAndToolBarOnMac(true);
+	if (MacOS::match(style()))
+		setUnifiedTitleAndToolBarOnMac(true);
 	setAcceptDrops(true);
 
 	_trackCount = 0;
@@ -127,8 +137,7 @@ GUI::GUI()
 
 void GUI::createBrowser()
 {
-	_browser = new FileBrowser(this);
-	_browser->setFilter(Data::filter());
+	_browser = new FileBrowser(Data::filter(), this);
 	connect(_browser, &FileBrowser::listChanged, this,
 	  &GUI::updateNavigationActions);
 }
@@ -195,14 +204,14 @@ void GUI::createActions()
 	_navigationActionGroup->setEnabled(false);
 
 	// General actions
-#if !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_ANDROID)
 	_exitAction = new QAction(QIcon::fromTheme(QUIT_NAME, QIcon(QUIT_ICON)),
 	  tr("Quit"), this);
 	_exitAction->setShortcut(QUIT_SHORTCUT);
 	_exitAction->setMenuRole(QAction::QuitRole);
 	connect(_exitAction, &QAction::triggered, this, &GUI::close);
 	addAction(_exitAction);
-#endif // Q_OS_MAC + Q_OS_ANDROID
+#endif // !Q_OS_MACOS && !Q_OS_ANDROID
 
 	// Help & About
 	_pathsAction = new QAction(tr("Paths"), this);
@@ -221,7 +230,9 @@ void GUI::createActions()
 	_openFileAction = new QAction(QIcon::fromTheme(OPEN_FILE_NAME,
 	  QIcon(OPEN_FILE_ICON)), tr("Open..."), this);
 	_openFileAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
 	_openFileAction->setShortcut(OPEN_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_openFileAction, &QAction::triggered, this,
 	  QOverload<>::of(&GUI::openFile));
 	addAction(_openFileAction);
@@ -230,6 +241,13 @@ void GUI::createActions()
 	_openDirAction->setMenuRole(QAction::NoRole);
 	connect(_openDirAction, &QAction::triggered, this,
 	  QOverload<>::of(&GUI::openDir));
+#ifdef Q_OS_ANDROID
+	_browseDirAction = new QAction(QIcon::fromTheme(OPEN_DIR_NAME,
+	  QIcon(OPEN_DIR_ICON)), tr("Browse directory..."), this);
+	_browseDirAction->setMenuRole(QAction::NoRole);
+	connect(_browseDirAction, &QAction::triggered, this,
+	  QOverload<>::of(&GUI::browseDir));
+#endif // Q_OS_ANDROID
 	_printFileAction = new QAction(QIcon::fromTheme(PRINT_FILE_NAME,
 	  QIcon(PRINT_FILE_ICON)), tr("Print..."), this);
 	_printFileAction->setMenuRole(QAction::NoRole);
@@ -239,34 +257,44 @@ void GUI::createActions()
 	_exportPDFFileAction = new QAction(QIcon::fromTheme(EXPORT_FILE_NAME,
 	  QIcon(EXPORT_FILE_ICON)), tr("Export to PDF..."), this);
 	_exportPDFFileAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
 	_exportPDFFileAction->setShortcut(PDF_EXPORT_SHORTCUT);
+#endif // Q_OS_ANDROID
 	_exportPDFFileAction->setActionGroup(_fileActionGroup);
 	connect(_exportPDFFileAction, &QAction::triggered, this, &GUI::exportPDFFile);
 	addAction(_exportPDFFileAction);
 	_exportPNGFileAction = new QAction(QIcon::fromTheme(EXPORT_FILE_NAME,
 	  QIcon(EXPORT_FILE_ICON)), tr("Export to PNG..."), this);
 	_exportPNGFileAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
 	_exportPNGFileAction->setShortcut(PNG_EXPORT_SHORTCUT);
+#endif // Q_OS_ANDROID
 	_exportPNGFileAction->setActionGroup(_fileActionGroup);
 	connect(_exportPNGFileAction, &QAction::triggered, this, &GUI::exportPNGFile);
 	addAction(_exportPNGFileAction);
 	_closeFileAction = new QAction(QIcon::fromTheme(CLOSE_FILE_NAME,
 	  QIcon(CLOSE_FILE_ICON)), tr("Close"), this);
 	_closeFileAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
 	_closeFileAction->setShortcut(CLOSE_SHORTCUT);
+#endif // Q_OS_ANDROID
 	_closeFileAction->setActionGroup(_fileActionGroup);
 	connect(_closeFileAction, &QAction::triggered, this, &GUI::closeAll);
 	addAction(_closeFileAction);
 	_reloadFileAction = new QAction(QIcon::fromTheme(RELOAD_FILE_NAME,
 	  QIcon(RELOAD_FILE_ICON)), tr("Reload"), this);
 	_reloadFileAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
 	_reloadFileAction->setShortcut(RELOAD_SHORTCUT);
+#endif // Q_OS_ANDROID
 	_reloadFileAction->setActionGroup(_fileActionGroup);
 	connect(_reloadFileAction, &QAction::triggered, this, &GUI::reloadFiles);
 	addAction(_reloadFileAction);
 	_statisticsAction = new QAction(tr("Statistics..."), this);
 	_statisticsAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
 	_statisticsAction->setShortcut(STATISTICS_SHORTCUT);
+#endif // Q_OS_ANDROID
 	_statisticsAction->setActionGroup(_fileActionGroup);
 	connect(_statisticsAction, &QAction::triggered, this, &GUI::statistics);
 	addAction(_statisticsAction);
@@ -319,7 +347,9 @@ void GUI::createActions()
 	  QIcon(SHOW_POI_ICON)), tr("Show POIs"), this);
 	_showPOIAction->setMenuRole(QAction::NoRole);
 	_showPOIAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showPOIAction->setShortcut(SHOW_POI_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showPOIAction, &QAction::triggered, _mapView, &MapView::showPOI);
 	addAction(_showPOIAction);
 
@@ -332,7 +362,9 @@ void GUI::createActions()
 	_showMapAction->setEnabled(false);
 	_showMapAction->setMenuRole(QAction::NoRole);
 	_showMapAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showMapAction->setShortcut(SHOW_MAP_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showMapAction, &QAction::triggered, _mapView,
 	  &MapView::showMap);
 	addAction(_showMapAction);
@@ -350,36 +382,31 @@ void GUI::createActions()
 	_clearMapCacheAction->setMenuRole(QAction::NoRole);
 	connect(_clearMapCacheAction, &QAction::triggered, this,
 	  &GUI::clearMapCache);
-	_nextMapAction = new QAction(tr("Next map"), this);
-	_nextMapAction->setMenuRole(QAction::NoRole);
-	_nextMapAction->setShortcut(NEXT_MAP_SHORTCUT);
-	connect(_nextMapAction, &QAction::triggered, this, &GUI::nextMap);
-	addAction(_nextMapAction);
-	_prevMapAction = new QAction(tr("Next map"), this);
-	_prevMapAction->setMenuRole(QAction::NoRole);
-	_prevMapAction->setShortcut(PREV_MAP_SHORTCUT);
-	connect(_prevMapAction, &QAction::triggered, this, &GUI::prevMap);
-	addAction(_prevMapAction);
+	QAction *nextMapAction = new QAction(tr("Next map"), this);
+	nextMapAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
+	nextMapAction->setShortcut(NEXT_MAP_SHORTCUT);
+#endif // Q_OS_ANDROID
+	connect(nextMapAction, &QAction::triggered, this, &GUI::nextMap);
+	addAction(nextMapAction);
+	QAction *prevMapAction = new QAction(tr("Previous map"), this);
+	prevMapAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
+	prevMapAction->setShortcut(PREV_MAP_SHORTCUT);
+#endif // Q_OS_ANDROID
+	connect(prevMapAction, &QAction::triggered, this, &GUI::prevMap);
+	addAction(prevMapAction);
 	_showCoordinatesAction = new QAction(tr("Show cursor coordinates"), this);
 	_showCoordinatesAction->setMenuRole(QAction::NoRole);
 	_showCoordinatesAction->setCheckable(true);
 	connect(_showCoordinatesAction, &QAction::triggered, _mapView,
 	  &MapView::showCursorCoordinates);
-	QActionGroup *mapLayersGroup = new QActionGroup(this);
-	connect(mapLayersGroup, &QActionGroup::triggered, this,
-	  &GUI::selectMapLayers);
-	_drawAllAction = new QAction(tr("All"), this);
-	_drawAllAction->setMenuRole(QAction::NoRole);
-	_drawAllAction->setCheckable(true);
-	_drawAllAction->setActionGroup(mapLayersGroup);
-	_drawRastersAction = new QAction(tr("Raster only"), this);
-	_drawRastersAction->setMenuRole(QAction::NoRole);
-	_drawRastersAction->setCheckable(true);
-	_drawRastersAction->setActionGroup(mapLayersGroup);
-	_drawVectorsAction = new QAction(tr("Vector only"), this);
-	_drawVectorsAction->setMenuRole(QAction::NoRole);
-	_drawVectorsAction->setCheckable(true);
-	_drawVectorsAction->setActionGroup(mapLayersGroup);
+	_mapStylesActionGroup = new QActionGroup(this);
+	connect(_mapStylesActionGroup, &QActionGroup::triggered, this,
+	  &GUI::selectMapStyle);
+	_mapLayersActionGroup = new QActionGroup(this);
+	connect(_mapLayersActionGroup, &QActionGroup::triggered, this,
+	  &GUI::selectMapLayer);
 
 	// Position
 	_showPositionAction = new QAction(QIcon::fromTheme(SHOW_POS_NAME,
@@ -387,8 +414,14 @@ void GUI::createActions()
 	_showPositionAction->setMenuRole(QAction::NoRole);
 	_showPositionAction->setCheckable(true);
 	_showPositionAction->setEnabled(false);
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)) \
+  && (defined(Q_OS_ANDROID) || defined(Q_OS_MACOS))
+	connect(_showPositionAction, &QAction::triggered, this,
+	  &GUI::showPosition);
+#else // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
 	connect(_showPositionAction, &QAction::triggered, _mapView,
 	  &MapView::showPosition);
+#endif // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
 	_followPositionAction = new QAction(tr("Follow position"), this);
 	_followPositionAction->setMenuRole(QAction::NoRole);
 	_followPositionAction->setCheckable(true);
@@ -410,23 +443,31 @@ void GUI::createActions()
 	_showTracksAction = new QAction(tr("Show tracks"), this);
 	_showTracksAction->setMenuRole(QAction::NoRole);
 	_showTracksAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showTracksAction->setShortcut(SHOW_TRACKS_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showTracksAction, &QAction::triggered, this, &GUI::showTracks);
 	_showRoutesAction = new QAction(tr("Show routes"), this);
 	_showRoutesAction->setMenuRole(QAction::NoRole);
 	_showRoutesAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showRoutesAction->setShortcut(SHOW_ROUTES_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showRoutesAction, &QAction::triggered, this, &GUI::showRoutes);
 	_showWaypointsAction = new QAction(tr("Show waypoints"), this);
 	_showWaypointsAction->setMenuRole(QAction::NoRole);
 	_showWaypointsAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showWaypointsAction->setShortcut(SHOW_WAYPOINTS_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showWaypointsAction, &QAction::triggered, this,
 	  &GUI::showWaypoints);
 	_showAreasAction = new QAction(tr("Show areas"), this);
 	_showAreasAction->setMenuRole(QAction::NoRole);
 	_showAreasAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showAreasAction->setShortcut(SHOW_AREAS_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showAreasAction, &QAction::triggered, this, &GUI::showAreas);
 	_showWaypointIconsAction = new QAction(tr("Waypoint icons"), this);
 	_showWaypointIconsAction->setMenuRole(QAction::NoRole);
@@ -443,6 +484,11 @@ void GUI::createActions()
 	_showRouteWaypointsAction->setCheckable(true);
 	connect(_showRouteWaypointsAction, &QAction::triggered, _mapView,
 	  &MapView::showRouteWaypoints);
+	_showTrackWaypointsAction = new QAction(tr("Track waypoints"), this);
+	_showTrackWaypointsAction->setMenuRole(QAction::NoRole);
+	_showTrackWaypointsAction->setCheckable(true);
+	connect(_showTrackWaypointsAction, &QAction::triggered, _mapView,
+	  &MapView::showTrackWaypoints);
 	_showTicksAction = new QAction(tr("km/mi markers"), this);
 	_showTicksAction->setMenuRole(QAction::NoRole);
 	_showTicksAction->setCheckable(true);
@@ -472,6 +518,11 @@ void GUI::createActions()
 	_showMarkerCoordinatesAction->setMenuRole(QAction::NoRole);
 	_showMarkerCoordinatesAction->setCheckable(true);
 	_showMarkerCoordinatesAction->setActionGroup(markerInfoGroup);
+	_showVideosAction = new QAction(tr("Video preview"), this);
+	_showVideosAction->setMenuRole(QAction::NoRole);
+	_showVideosAction->setCheckable(true);
+	connect(_showVideosAction, &QAction::triggered, _mapView,
+	  &MapView::showVideos);
 	_useStylesAction = new QAction(tr("Use styles"), this);
 	_useStylesAction->setMenuRole(QAction::NoRole);
 	_useStylesAction->setCheckable(true);
@@ -482,7 +533,9 @@ void GUI::createActions()
 	_downloadDataDEMAction = new QAction(tr("Download data DEM"), this);
 	_downloadDataDEMAction->setMenuRole(QAction::NoRole);
 	_downloadDataDEMAction->setEnabled(false);
+#ifndef Q_OS_ANDROID
 	_downloadDataDEMAction->setShortcut(DOWNLOAD_DEM_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_downloadDataDEMAction, &QAction::triggered, this,
 	  &GUI::downloadDataDEM);
 	_downloadMapDEMAction = new QAction(tr("Download map DEM"), this);
@@ -496,15 +549,21 @@ void GUI::createActions()
 	_drawHillShadingAction = new QAction(tr("Show hillshading"), this);
 	_drawHillShadingAction->setMenuRole(QAction::NoRole);
 	_drawHillShadingAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
+	_drawHillShadingAction->setShortcut(HILLSHADING_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_drawHillShadingAction, &QAction::triggered, _mapView,
 	  &MapView::drawHillShading);
+	addAction(_drawHillShadingAction);
 
 	// Graph actions
 	_showGraphsAction = new QAction(QIcon::fromTheme(SHOW_GRAPHS_NAME,
 	  QIcon(SHOW_GRAPHS_ICON)), tr("Show graphs"), this);
 	_showGraphsAction->setMenuRole(QAction::NoRole);
 	_showGraphsAction->setCheckable(true);
+#ifndef Q_OS_ANDROID
 	_showGraphsAction->setShortcut(SHOW_GRAPHS_SHORTCUT);
+#endif // Q_OS_ANDROID
 	connect(_showGraphsAction, &QAction::triggered, this, &GUI::showGraphs);
 	addAction(_showGraphsAction);
 	ag = new QActionGroup(this);
@@ -539,6 +598,20 @@ void GUI::createActions()
 	connect(_showGraphTabsAction, &QAction::triggered, this,
 	  &GUI::showGraphTabs);
 #endif // Q_OS_ANDROID
+	QAction *nextTabAction = new QAction(tr("Next graph tab"), this);
+	nextTabAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
+	nextTabAction->setShortcut(NEXT_TAB_SHORTCUT);
+#endif // Q_OS_ANDROID
+	connect(nextTabAction, &QAction::triggered, this, &GUI::nextTab);
+	addAction(nextTabAction);
+	QAction *prevTabAction = new QAction(tr("Previous graph tab"), this);
+	prevTabAction->setMenuRole(QAction::NoRole);
+#ifndef Q_OS_ANDROID
+	prevTabAction->setShortcut(PREV_TAB_SHORTCUT);
+#endif // Q_OS_ANDROID
+	connect(prevTabAction, &QAction::triggered, this, &GUI::prevTab);
+	addAction(prevTabAction);
 
 	// Settings actions
 #ifndef Q_OS_ANDROID
@@ -664,7 +737,15 @@ void GUI::createPOINodeMenu(const TreeNode<POIAction*> &node, QMenu *menu,
 
 void GUI::createMenus()
 {
+#ifdef Q_OS_ANDROID
+	_menu = new QMenu(this);
+#endif // Q_OS_ANDROID
+
+#ifdef Q_OS_ANDROID
+	QMenu *fileMenu = _menu->addMenu(tr("&File"));
+#else
 	QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
+#endif
 	fileMenu->addAction(_openFileAction);
 #ifndef Q_OS_ANDROID
 	_recentFilesMenu = fileMenu->addMenu(tr("Open recent"));
@@ -676,6 +757,9 @@ void GUI::createMenus()
 	_recentFilesMenu->addAction(_clearRecentFilesAction);
 #endif // Q_OS_ANDROID
 	fileMenu->addAction(_openDirAction);
+#ifdef Q_OS_ANDROID
+	fileMenu->addAction(_browseDirAction);
+#endif // Q_OS_ANDROID
 	fileMenu->addSeparator();
 #ifndef Q_OS_ANDROID
 	fileMenu->addAction(_printFileAction);
@@ -687,27 +771,36 @@ void GUI::createMenus()
 	fileMenu->addSeparator();
 	fileMenu->addAction(_reloadFileAction);
 	fileMenu->addAction(_closeFileAction);
-#if !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_ANDROID)
 	fileMenu->addSeparator();
 	fileMenu->addAction(_exitAction);
-#endif // Q_OS_MAC + Q_OS_ANDROID
+#endif // !Q_OS_MACOS && !Q_OS_ANDROID
 
+#ifdef Q_OS_ANDROID
+	_mapMenu = _menu->addMenu(tr("&Map"));
+#else
 	_mapMenu = menuBar()->addMenu(tr("&Map"));
+#endif
 	_mapsEnd = _mapMenu->addSeparator();
 	_mapMenu->addAction(_loadMapAction);
 	_mapMenu->addAction(_loadMapDirAction);
 	_mapMenu->addAction(_clearMapCacheAction);
 	_mapMenu->addSeparator();
-	QMenu *layersMenu = _mapMenu->addMenu(tr("Layers"));
-	layersMenu->menuAction()->setMenuRole(QAction::NoRole);
-	layersMenu->addAction(_drawAllAction);
-	layersMenu->addAction(_drawRastersAction);
-	layersMenu->addAction(_drawVectorsAction);
+	_mapStylesMenu = _mapMenu->addMenu(tr("Styles"));
+	_mapStylesMenu->menuAction()->setMenuRole(QAction::NoRole);
+	_mapStylesMenu->setEnabled(false);
+	_mapLayersMenu = _mapMenu->addMenu(tr("Layers"));
+	_mapLayersMenu->menuAction()->setMenuRole(QAction::NoRole);
+	_mapLayersMenu->setEnabled(false);
 	_mapMenu->addAction(_showCoordinatesAction);
 	_mapMenu->addSeparator();
 	_mapMenu->addAction(_showMapAction);
 
+#ifdef Q_OS_ANDROID
+	QMenu *graphMenu = _menu->addMenu(tr("&Graph"));
+#else
 	QMenu *graphMenu = menuBar()->addMenu(tr("&Graph"));
+#endif
 	graphMenu->addAction(_distanceGraphAction);
 	graphMenu->addAction(_timeGraphAction);
 	graphMenu->addSeparator();
@@ -719,10 +812,15 @@ void GUI::createMenus()
 	graphMenu->addSeparator();
 	graphMenu->addAction(_showGraphsAction);
 
+#ifdef Q_OS_ANDROID
+	QMenu *dataMenu = _menu->addMenu(tr("&Data"));
+#else
 	QMenu *dataMenu = menuBar()->addMenu(tr("&Data"));
+#endif
 	dataMenu->addAction(_showWaypointIconsAction);
 	dataMenu->addAction(_showWaypointLabelsAction);
 	dataMenu->addAction(_showRouteWaypointsAction);
+	dataMenu->addAction(_showTrackWaypointsAction);
 	dataMenu->addAction(_showTicksAction);
 	dataMenu->addAction(_showLegendAction);
 	QMenu *markerMenu = dataMenu->addMenu(tr("Position info"));
@@ -731,6 +829,8 @@ void GUI::createMenus()
 	markerMenu->addAction(_showMarkersAction);
 	markerMenu->addAction(_showMarkerDateAction);
 	markerMenu->addAction(_showMarkerCoordinatesAction);
+	markerMenu->addSeparator();
+	markerMenu->addAction(_showVideosAction);
 	dataMenu->addSeparator();
 	dataMenu->addAction(_useStylesAction);
 	dataMenu->addSeparator();
@@ -739,7 +839,11 @@ void GUI::createMenus()
 	dataMenu->addAction(_showAreasAction);
 	dataMenu->addAction(_showWaypointsAction);
 
+#ifdef Q_OS_ANDROID
+	_poiMenu = _menu->addMenu(tr("&POI"));
+#else
 	_poiMenu = menuBar()->addMenu(tr("&POI"));
+#endif
 	_poisEnd = _poiMenu->addSeparator();
 	_poiMenu->addAction(_openPOIAction);
 	_poiMenu->addAction(_selectAllPOIAction);
@@ -751,7 +855,11 @@ void GUI::createMenus()
 	_poiMenu->addSeparator();
 	_poiMenu->addAction(_showPOIAction);
 
+#ifdef Q_OS_ANDROID
+	QMenu *demMenu = _menu->addMenu(tr("DEM"));
+#else
 	QMenu *demMenu = menuBar()->addMenu(tr("DEM"));
+#endif
 	demMenu->addAction(_showDEMTilesAction);
 	demMenu->addSeparator();
 	demMenu->addAction(_downloadDataDEMAction);
@@ -759,14 +867,22 @@ void GUI::createMenus()
 	demMenu->addSeparator();
 	demMenu->addAction(_drawHillShadingAction);
 
+#ifdef Q_OS_ANDROID
+	QMenu *positionMenu = _menu->addMenu(tr("Position"));
+#else
 	QMenu *positionMenu = menuBar()->addMenu(tr("Position"));
+#endif
 	positionMenu->addAction(_showPositionCoordinatesAction);
 	positionMenu->addAction(_showMotionInfoAction);
 	positionMenu->addAction(_followPositionAction);
 	positionMenu->addSeparator();
 	positionMenu->addAction(_showPositionAction);
 
+#ifdef Q_OS_ANDROID
+	QMenu *settingsMenu = _menu->addMenu(tr("&Settings"));
+#else
 	QMenu *settingsMenu = menuBar()->addMenu(tr("&Settings"));
+#endif
 	QMenu *timeMenu = settingsMenu->addMenu(tr("Time"));
 	timeMenu->menuAction()->setMenuRole(QAction::NoRole);
 	timeMenu->addAction(_totalTimeAction);
@@ -789,7 +905,11 @@ void GUI::createMenus()
 #endif // Q_OS_ANDROID
 	settingsMenu->addAction(_openOptionsAction);
 
+#ifdef Q_OS_ANDROID
+	QMenu *helpMenu = _menu->addMenu(tr("&Help"));
+#else
 	QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
+#endif
 	helpMenu->addAction(_pathsAction);
 #ifndef Q_OS_ANDROID
 	helpMenu->addAction(_keysAction);
@@ -801,42 +921,76 @@ void GUI::createMenus()
 #ifdef Q_OS_ANDROID
 void GUI::createNavigation()
 {
-	_navigation = new NavigationWidget(_mapView);
+	_menuButton = new ImageButton(
+	  QPixmap(":/icons/Android/menu-normal.svg"),
+	  QPixmap(":/icons/Android/menu-active.svg"), 32);
+	_closeButton = new ImageButton(
+	  QPixmap(":/icons/Android/arrow-left-normal.svg"),
+	  QPixmap(":/icons/Android/arrow-left-active.svg"), 24);
+	_closeButton->setVisible(false);
+	_nextButton = new ImageButton(
+	  QPixmap(":/icons/Android/next-normal.svg"),
+	  QPixmap(":/icons/Android/next-active.svg"), 32);
+	_nextButton->setVisible(false);
+	_prevButton = new ImageButton(
+	  QPixmap(":/icons/Android/prev-normal.svg"),
+	  QPixmap(":/icons/Android/prev-active.svg"), 32);
+	_prevButton->setVisible(false);
 
-	connect(_navigation, &NavigationWidget::next, this, &GUI::next);
-	connect(_navigation, &NavigationWidget::prev, this, &GUI::prev);
+	connect(_menuButton, &ImageButton::released, this, &GUI::menu);
+	connect(_closeButton, &ImageButton::released, this, &GUI::close);
+	connect(_nextButton, &ImageButton::released, this, &GUI::next);
+	connect(_prevButton, &ImageButton::released, this, &GUI::prev);
+
+	QHBoxLayout *ctrl = new QHBoxLayout();
+	ctrl->addWidget(_closeButton);
+	ctrl->addStretch();
+	ctrl->addWidget(_menuButton);
+	ctrl->setAlignment(Qt::AlignTop);
+
+	QHBoxLayout *nav = new QHBoxLayout();
+	nav->addWidget(_prevButton);
+	nav->addStretch();
+	nav->addWidget(_nextButton);
+
+	QVBoxLayout *layout = new QVBoxLayout(_mapView);
+	layout->addLayout(ctrl, 1);
+	layout->addLayout(nav, 1);
+	layout->addStretch(1);
 }
 #else // Q_OS_ANDROID
 void GUI::createToolBars()
 {
-	int is = style()->pixelMetric(QStyle::PM_ToolBarIconSize);
-	QSize iconSize(qMin(is, TOOLBAR_ICON_SIZE), qMin(is, TOOLBAR_ICON_SIZE));
+	bool macos = MacOS::match(style());
 
-#ifdef Q_OS_MAC
-	setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-#endif // Q_OS_MAC
+	if (macos)
+		setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
 
 	_fileToolBar = addToolBar(tr("File"));
 	_fileToolBar->setObjectName("File");
-	_fileToolBar->setIconSize(iconSize);
+	if (macos)
+		_fileToolBar->setIconSize(MAC_TOOLBAR_ICON_SIZE);
 	_fileToolBar->addAction(_openFileAction);
 	_fileToolBar->addAction(_reloadFileAction);
 	_fileToolBar->addAction(_closeFileAction);
-#ifndef Q_OS_MAC
-	_fileToolBar->addAction(_printFileAction);
-#endif // Q_OS_MAC
+	if (!macos)
+		_fileToolBar->addAction(_printFileAction);
 
 	_showToolBar = addToolBar(tr("Show"));
 	_showToolBar->setObjectName("Show");
-	_showToolBar->setIconSize(iconSize);
-	_showToolBar->addAction(_showPOIAction);
+	if (macos)
+		_showToolBar->setIconSize(MAC_TOOLBAR_ICON_SIZE);
+	if (!macos)
+		_showToolBar->addAction(_showPOIAction);
 	_showToolBar->addAction(_showMapAction);
 	_showToolBar->addAction(_showGraphsAction);
-	_showToolBar->addAction(_showPositionAction);
+	if (!macos)
+		_showToolBar->addAction(_showPositionAction);
 
 	_navigationToolBar = addToolBar(tr("Navigation"));
 	_navigationToolBar->setObjectName("Navigation");
-	_navigationToolBar->setIconSize(iconSize);
+	if (macos)
+		_navigationToolBar->setIconSize(MAC_TOOLBAR_ICON_SIZE);
 	_navigationToolBar->addAction(_firstAction);
 	_navigationToolBar->addAction(_prevAction);
 	_navigationToolBar->addAction(_nextAction);
@@ -847,7 +1001,9 @@ void GUI::createToolBars()
 void GUI::createMapView()
 {
 	_map = new EmptyMap(this);
+
 	_mapView = new MapView(_map, _poi, this);
+
 	_mapView->setSizePolicy(QSizePolicy(QSizePolicy::Ignored,
 	  QSizePolicy::Expanding));
 #ifdef Q_OS_ANDROID
@@ -866,9 +1022,8 @@ void GUI::createGraphTabs()
 	_graphTabWidget->setSizePolicy(QSizePolicy(QSizePolicy::Ignored,
 	  QSizePolicy::Preferred));
 	_graphTabWidget->setMinimumHeight(200);
-#ifndef Q_OS_MAC
-	_graphTabWidget->setDocumentMode(true);
-#endif // Q_OS_MAC
+	if (!MacOS::match(style()))
+		_graphTabWidget->setDocumentMode(true);
 
 	connect(_graphTabWidget, &QTabWidget::currentChanged, this,
 	  &GUI::graphChanged);
@@ -957,9 +1112,12 @@ void GUI::keys()
 	  + QKeySequence(TOGGLE_TIME_TYPE_KEY).toString() + "</i></td></tr><tr><td>"
 	  + tr("Toggle position info") + "</td><td><i>"
 	  + QKeySequence(TOGGLE_MARKER_INFO_KEY).toString() + "</i></td></tr>"
-	  + "<tr><td></td><td></td></tr><tr><td>" + tr("Next map")
-	  + "</td><td><i>" + NEXT_MAP_SHORTCUT.toString() + "</i></td></tr><tr><td>"
+	  + "<tr><td></td><td></td></tr><tr><td>" + tr("Next map") + "</td><td><i>"
+	  + NEXT_MAP_SHORTCUT.toString() + "</i></td></tr><tr><td>"
 	  + tr("Previous map") + "</td><td><i>" + PREV_MAP_SHORTCUT.toString()
+	  + "</i></td></tr><tr><td>" + tr("Next graph tab") + "</td><td><i>"
+	  + NEXT_TAB_SHORTCUT.toString() + "</i></td></tr><tr><td>"
+	  + tr("Previous graph tab") + "</td><td><i>" + PREV_TAB_SHORTCUT.toString()
 	  + "</i></td></tr><tr><td></td><td></td></tr><tr><td>" + tr("Zoom in")
 	  + "</td><td><i>" + QKeySequence(ZOOM_IN).toString()
 	  + "</i></td></tr><tr><td>" + tr("Zoom out") + "</td><td><i>"
@@ -1036,9 +1194,13 @@ void GUI::openFile()
 		_dataDir = QFileInfo(files.last()).path();
 }
 
-#ifndef Q_OS_ANDROID
 void GUI::openDir(const QString &path, int &showError)
 {
+#ifdef Q_OS_ANDROID
+	QStringList ml(Util::listDirFiles(path));
+	for (int i = 0; i < ml.size(); i++)
+		openFile(ml.at(i), true, showError);
+#else // Q_OS_ANDROID
 	QDir md(path);
 	md.setFilter(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
 	md.setSorting(QDir::DirsLast);
@@ -1052,8 +1214,8 @@ void GUI::openDir(const QString &path, int &showError)
 		else
 			openFile(fi.absoluteFilePath(), true, showError);
 	}
-}
 #endif // Q_OS_ANDROID
+}
 
 void GUI::openDir()
 {
@@ -1061,17 +1223,25 @@ void GUI::openDir()
 	  _dataDir));
 
 	if (!dir.isEmpty()) {
-#ifdef Q_OS_ANDROID
-		int showError = 1;
-		_browser->setCurrentDir(dir);
-		openFile(_browser->current(), true, showError);
-#else // Q_OS_ANDROID
 		int showError = 2;
 		openDir(dir, showError);
 		_dataDir = dir;
-#endif // Q_OS_ANDROID
 	}
 }
+
+#ifdef Q_OS_ANDROID
+void GUI::browseDir()
+{
+	QString dir(QFileDialog::getExistingDirectory(this, tr("Open directory"),
+	  _dataDir));
+
+	if (!dir.isEmpty()) {
+		int showError = 1;
+		_browser->setCurrentDir(dir);
+		openFile(_browser->current(), true, showError);
+	}
+}
+#endif // Q_OS_ANDROID
 
 bool GUI::openFile(const QString &fileName, bool tryUnknown, int &showError)
 {
@@ -1089,8 +1259,12 @@ bool GUI::openFile(const QString &fileName, bool tryUnknown, int &showError)
 	else
 		path = fileName;
 
+#ifdef Q_OS_ANDROID
+	QString canonicalPath(path);
+#else // Q_OS_ANDROID
 	QFileInfo fi(path);
 	QString canonicalPath(fi.canonicalFilePath());
+#endif // Q_OS_ANDROID
 
 	if (_files.contains(canonicalPath))
 		return true;
@@ -1359,8 +1533,8 @@ void GUI::exportPNGFile()
 		plotGraphsPage(&p2, contentRect, 1);
 
 		QFileInfo fi(_pngExport.fileName);
-		img2.save(fi.absolutePath() + "/" + fi.baseName() + "-graphs."
-		  + fi.suffix(), "png");
+		img2.save(fi.absoluteDir().absoluteFilePath(fi.baseName() + "-graphs."
+		  + fi.suffix()), "png");
 	}
 }
 
@@ -1706,9 +1880,8 @@ void GUI::showFullscreen(bool show)
 		showToolbars(false);
 		_mapView->setFrameStyle(QFrame::NoFrame);
 		_graphTabWidget->tabBar()->hide();
-#ifdef Q_OS_MAC
-		_graphTabWidget->setDocumentMode(true);
-#endif // Q_OS_MAC
+		if (MacOS::match(style()))
+			_graphTabWidget->setDocumentMode(true);
 		showFullScreen();
 	} else {
 		Q_ASSERT(!_windowGeometries.isEmpty());
@@ -1718,9 +1891,8 @@ void GUI::showFullscreen(bool show)
 		showToolbars(true);
 		_mapView->setFrameStyle(_frameStyle);
 		_graphTabWidget->tabBar()->show();
-#ifdef Q_OS_MAC
-		_graphTabWidget->setDocumentMode(false);
-#endif // Q_OS_MAC
+		if (MacOS::match(style()))
+			_graphTabWidget->setDocumentMode(false);
 		showNormal();
 	}
 }
@@ -1791,14 +1963,16 @@ void GUI::showPathMarkerInfo(QAction *action)
 	}
 }
 
-void GUI::selectMapLayers(QAction *action)
+void GUI::selectMapStyle(QAction *action)
 {
-	if (action == _drawVectorsAction)
-		_mapView->selectLayers(MapView::Layer::Vector);
-	else if (action == _drawRastersAction)
-		_mapView->selectLayers(MapView::Layer::Raster);
-	else
-		_mapView->selectLayers(MapView::Layer::Raster | MapView::Layer::Vector);
+	_mapView->selectStyle(action->data().toInt());
+	updateMapLayers();
+	updateHillShading();
+}
+
+void GUI::selectMapLayer(QAction *action)
+{
+	_mapView->selectLayer(action->data().toInt());
 }
 
 void GUI::loadMap()
@@ -1904,7 +2078,6 @@ bool GUI::loadMap(const QString &fileName, MapAction *&action, int &showError)
 	QUrl url(fileName);
 
 	path = url.isLocalFile() ? url.toLocalFile() : fileName;
-
 
 	TreeNode<Map*> maps(MapList::loadMaps(path, _mapView->inputProjection()));
 	QList<QAction*> existingActions(_mapsActionGroup->actions());
@@ -2049,20 +2222,19 @@ void GUI::downloadMapDEM()
 
 void GUI::downloadDEM(const RectC &rect)
 {
-	int cnt = _dem->numTiles(rect);
+	int cnt = _dem->numTiles(rect, DEM_DOWNLOAD_LIMIT);
 
-	if (cnt > DEM_DOWNLOAD_LIMIT)
+	if (cnt < 0)
 		QMessageBox::information(this, APP_NAME,
 		  tr("DEM tiles download limit exceeded. If you really need data for "
 		  "such a huge area, download the files manually."));
 	else if (cnt < DEM_DOWNLOAD_WARNING || QMessageBox::question(this, APP_NAME,
 	  tr("Download %n DEM tiles?", "", cnt)) == QMessageBox::Yes) {
 		_demRects.append(rect);
-		if (!_dem->loadTiles(rect) && _demRects.size() == 1)
+		if (!_dem->loadTiles(rect, DEM_DOWNLOAD_LIMIT) && _demRects.size() == 1)
 			demLoaded();
 	}
 }
-
 
 void GUI::demLoaded()
 {
@@ -2093,6 +2265,38 @@ void GUI::showDEMTiles()
 		_fileActionGroup->setEnabled(true);
 	}
 }
+
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)) \
+  && (defined(Q_OS_ANDROID) || defined(Q_OS_MACOS))
+void GUI::positionGranted(const QPermission &perm)
+{
+	if (perm.status() == Qt::PermissionStatus::Granted)
+		_mapView->showPosition(true);
+	else
+		_showPositionAction->setChecked(false);
+}
+
+void GUI::showPosition(bool show)
+{
+	if (show) {
+		QLocationPermission perm;
+		perm.setAccuracy(QLocationPermission::Precise);
+
+		switch (qApp->checkPermission(perm)) {
+			case Qt::PermissionStatus::Undetermined:
+				qApp->requestPermission(perm, this, &GUI::positionGranted);
+				return;
+			case Qt::PermissionStatus::Denied:
+				_showPositionAction->setChecked(false);
+				return;
+			case Qt::PermissionStatus::Granted:
+				break;
+		}
+	}
+
+	_mapView->showPosition(show);
+}
+#endif // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
 
 void GUI::updateStatusBarInfo()
 {
@@ -2156,7 +2360,7 @@ void GUI::updateRecentFiles(const QString &fileName)
 
 	actions = _recentFilesActionGroup->actions();
 	QAction *before = actions.size() ? actions.last() : _recentFilesEnd;
-	a = new QAction(fileName, _recentFilesActionGroup);
+	a = new QAction(Util::displayName(fileName), _recentFilesActionGroup);
 	a->setData(fileName);
 	_recentFilesMenu->insertAction(before, a);
 	_recentFilesMenu->setEnabled(true);
@@ -2177,6 +2381,22 @@ void GUI::recentFileSelected(QAction *action)
 	int showError = 1;
 	openFile(action->data().toString(), true, showError);
 }
+
+void GUI::loadRecentFiles(const QStringList &files)
+{
+	QAction *before = _recentFilesEnd;
+
+	for (int i = 0; i < files.size(); i++) {
+		QAction *a = new QAction(Util::displayName(files.at(i)),
+		  _recentFilesActionGroup);
+		a->setData(files.at(i));
+		_recentFilesMenu->insertAction(before, a);
+		before = a;
+	}
+
+	if (!files.isEmpty())
+		_recentFilesMenu->setEnabled(true);
+}
 #endif // Q_OS_ANDROID
 
 void GUI::mapChanged(QAction *action)
@@ -2184,6 +2404,9 @@ void GUI::mapChanged(QAction *action)
 	_map = action->data().value<Map*>();
 	_mapView->setMap(_map);
 	updateMapDEMDownloadAction();
+	updateMapStyles();
+	updateMapLayers();
+	updateHillShading();
 }
 
 void GUI::nextMap()
@@ -2215,6 +2438,24 @@ void GUI::prevMap()
 			maps.at(prev)->trigger();
 			break;
 		}
+	}
+}
+
+void GUI::nextTab()
+{
+	int ci = _graphTabWidget->currentIndex();
+	if (ci >= 0) {
+		ci = ((ci + 1) >= _graphTabWidget->count()) ? 0 : ci + 1;
+		_graphTabWidget->setCurrentIndex(ci);
+	}
+}
+
+void GUI::prevTab()
+{
+	int ci = _graphTabWidget->currentIndex();
+	if (ci >= 0) {
+		ci = ((ci - 1) < 0) ? _graphTabWidget->count() - 1 : ci - 1;
+		_graphTabWidget->setCurrentIndex(ci);
 	}
 }
 
@@ -2260,9 +2501,9 @@ void GUI::graphChanged(int index)
 void GUI::updateNavigationActions()
 {
 #ifdef Q_OS_ANDROID
-	_navigation->enableNext(!_browser->isLast()
+	_nextButton->setVisible(!_browser->isLast()
 	  && !_browser->current().isNull());
-	_navigation->enablePrev(!_browser->isFirst()
+	_prevButton->setVisible(!_browser->isFirst()
 	  && !_browser->current().isNull());
 #else // Q_OS_ANDROID
 	_lastAction->setEnabled(!_browser->isLast());
@@ -2314,6 +2555,53 @@ void GUI::updateMapDEMDownloadAction()
 {
 	_downloadMapDEMAction->setEnabled(!_dem->url().isEmpty()
 	  && !_dem->checkTiles(_map->llBounds()));
+}
+
+void GUI::updateMapStyles()
+{
+	_mapStylesMenu->clear();
+
+	int dflt = 0;
+	QStringList styles(_map->styles(dflt));
+
+	for (int i = 0; i < styles.size(); i++) {
+		QAction *a = new QAction(styles.at(i), _mapStylesMenu);
+		a->setActionGroup(_mapStylesActionGroup);
+		a->setMenuRole(QAction::NoRole);
+		a->setData(i);
+		a->setCheckable(true);
+		if (i == dflt)
+			a->setChecked(true);
+		_mapStylesMenu->addAction(a);
+	}
+
+	_mapStylesMenu->setEnabled(!styles.isEmpty());
+}
+
+void GUI::updateMapLayers()
+{
+	_mapLayersMenu->clear();
+
+	int dflt = 0;
+	QStringList layers(_map->layers(_lang, dflt));
+
+	for (int i = 0; i < layers.size(); i++) {
+		QAction *a = new QAction(layers.at(i), _mapLayersMenu);
+		a->setActionGroup(_mapLayersActionGroup);
+		a->setMenuRole(QAction::NoRole);
+		a->setData(i);
+		a->setCheckable(true);
+		if (i == dflt)
+			a->setChecked(true);
+		_mapLayersMenu->addAction(a);
+	}
+
+	_mapLayersMenu->setEnabled(!layers.isEmpty());
+}
+
+void GUI::updateHillShading()
+{
+	_drawHillShadingAction->setEnabled(_map->hillShading());
 }
 
 void GUI::setTimeType(TimeType type)
@@ -2388,6 +2676,13 @@ void GUI::first()
 	closeFiles();
 	openFile(file, true, showError);
 }
+
+#ifdef Q_OS_ANDROID
+void GUI::menu()
+{
+	_menu->popup(_menuButton->frameGeometry().bottomLeft());
+}
+#endif // Q_OS_ANDROID
 
 #ifndef Q_OS_ANDROID
 void GUI::keyPressEvent(QKeyEvent *event)
@@ -2556,19 +2851,10 @@ void GUI::writeSettings()
 #endif // Q_OS_ANDROID
 
 	/* Map */
-	MapView::Layers ml;
-	if (_drawRastersAction->isChecked())
-		ml = MapView::Layer::Raster;
-	else if (_drawVectorsAction->isChecked())
-		ml = MapView::Layer::Vector;
-	else
-		ml = MapView::Layer::Raster | MapView::Layer::Vector;
-
 	settings.beginGroup(SETTINGS_MAP);
 	WRITE(activeMap, _map->name());
 	WRITE(showMap, _showMapAction->isChecked());
 	WRITE(cursorCoordinates, _showCoordinatesAction->isChecked());
-	WRITE(layers, (int)ml);
 	settings.endGroup();
 
 	/* Graph */
@@ -2614,6 +2900,7 @@ void GUI::writeSettings()
 	WRITE(waypointIcons, _showWaypointIconsAction->isChecked());
 	WRITE(waypointLabels, _showWaypointLabelsAction->isChecked());
 	WRITE(routeWaypoints, _showRouteWaypointsAction->isChecked());
+	WRITE(trackWaypoints, _showTrackWaypointsAction->isChecked());
 	WRITE(pathTicks, _showTicksAction->isChecked());
 	WRITE(legend, _showLegendAction->isChecked());
 	WRITE(positionMarkers, _showMarkersAction->isChecked()
@@ -2621,6 +2908,7 @@ void GUI::writeSettings()
 	  || _showMarkerCoordinatesAction->isChecked());
 	WRITE(markerInfo, mi);
 	WRITE(useStyles, _useStylesAction->isChecked());
+	WRITE(videos, _showVideosAction->isChecked());
 	settings.endGroup();
 
 	/* DEM */
@@ -2729,6 +3017,9 @@ void GUI::writeSettings()
 	WRITE(outputProjection, _options.outputProjection);
 	WRITE(inputProjection, _options.inputProjection);
 	WRITE(hidpiMap, _options.hidpiMap);
+	WRITE(pathsDetail, _options.pathsDetail);
+	WRITE(pointsDetail, _options.pointsDetail);
+	WRITE(hillshadingDetail, _options.hillshadingDetail);
 	WRITE(dataPath, _options.dataPath);
 	WRITE(mapsPath, _options.mapsPath);
 	WRITE(poiPath, _options.poiPath);
@@ -2786,12 +3077,12 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 	settings.endGroup();
 
 	/* File */
-#ifndef Q_OS_ANDROID
+#ifdef Q_OS_ANDROID
+	Q_UNUSED(recentFiles);
+#else // Q_OS_ANDROID
 	settings.beginGroup(SETTINGS_FILE);
 	recentFiles = READ(recentDataFiles);
 	settings.endGroup();
-#else // Q_OS_ANDROID
-	Q_UNUSED(recentFiles);
 #endif // Q_OS_ANDROID
 
 	/* Map */
@@ -2804,15 +3095,6 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 		_showCoordinatesAction->setChecked(true);
 		_mapView->showCursorCoordinates(true);
 	}
-	int layers = READ(layers).toInt();
-	if (layers == MapView::Layer::Raster) {
-		_drawRastersAction->setChecked(true);
-		_mapView->selectLayers(MapView::Layer::Raster);
-	} else if (layers == MapView::Layer::Vector) {
-		_drawVectorsAction->setChecked(true);
-		_mapView->selectLayers(MapView::Layer::Vector);
-	} else
-		_drawAllAction->setChecked(true);
 	activeMap = READ(activeMap).toString();
 	settings.endGroup();
 
@@ -2903,6 +3185,10 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 		_showRouteWaypointsAction->setChecked(true);
 		_mapView->showRouteWaypoints(true);
 	}
+	if (READ(trackWaypoints).toBool()) {
+		_showTrackWaypointsAction->setChecked(true);
+		_mapView->showTrackWaypoints(true);
+	}
 	if (READ(pathTicks).toBool()) {
 		_showTicksAction->setChecked(true);
 		_mapView->showTicks(true);
@@ -2928,6 +3214,10 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 		_mapView->showMarkerInfo(mt);
 	} else
 		_hideMarkersAction->setChecked(true);
+	if (READ(videos).toBool()) {
+		_showVideosAction->setChecked(true);
+		_mapView->showVideos(true);
+	}
 	settings.endGroup();
 
 	/* DEM */
@@ -2942,7 +3232,12 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 	settings.beginGroup(SETTINGS_POSITION);
 	if (READ(showPosition).toBool()) {
 		_showPositionAction->setChecked(true);
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)) \
+  && (defined(Q_OS_ANDROID) || defined(Q_OS_MACOS))
+		showPosition(true);
+#else // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
 		_mapView->showPosition(true);
+#endif // QT 6.5 && (Q_OS_ANDROID || Q_OS_MACOS)
 	}
 	if (READ(followPosition).toBool()) {
 		_followPositionAction->setChecked(true);
@@ -3049,6 +3344,9 @@ void GUI::readSettings(QString &activeMap, QStringList &disabledPOIs,
 	_options.outputProjection = READ(outputProjection).toInt();
 	_options.inputProjection = READ(inputProjection).toInt();
 	_options.hidpiMap = READ(hidpiMap).toBool();
+	_options.pathsDetail = READ(pathsDetail).toInt();
+	_options.pointsDetail = READ(pointsDetail).toInt();
+	_options.hillshadingDetail = READ(hillshadingDetail).toInt();
 	_options.dataPath = READ(dataPath).toString();
 	_options.mapsPath = READ(mapsPath).toString();
 	_options.poiPath = READ(poiPath).toString();
@@ -3081,7 +3379,8 @@ void GUI::loadOptions()
 	_mapView->setPOIColor(_options.poiColor);
 	_mapView->setRenderHint(QPainter::Antialiasing, _options.pathAntiAliasing);
 	_mapView->setMarkerColor(_options.sliderColor);
-	_mapView->useOpenGL(_options.useOpenGL);
+	if (_mapView->useOpenGL(_options.useOpenGL))
+		fixWidgetOrder();
 	_mapView->setMapConfig(CRS::projection(_options.inputProjection),
 	  CRS::projection(4326, _options.outputProjection), _options.hidpiMap);
 	_mapView->setTimeZone(_options.timeZone.zone());
@@ -3120,7 +3419,7 @@ void GUI::loadOptions()
 	Downloader::enableHTTP2(_options.enableHTTP2);
 	Downloader::setTimeout(_options.connectionTimeout);
 
-	QPixmapCache::setCacheLimit(_options.pixmapCache * 1024);
+	TileCache::setCacheLimit(_options.pixmapCache * 1024);
 	DEM::setCacheSize(_options.demCache * 1024);
 
 	HillShading::setAlpha(_options.hillshadingAlpha);
@@ -3140,6 +3439,10 @@ void GUI::loadOptions()
 	_dataDir = _options.dataPath;
 	_mapDir = _options.mapsPath;
 	_poiDir = _options.poiPath;
+
+	IMG::RasterTile::setPathsDetail(_options.pathsDetail);
+	IMG::RasterTile::setPointsDetail(_options.pointsDetail);
+	IMG::RasterTile::setHillshadingDetail(_options.hillshadingDetail);
 }
 
 void GUI::updateOptions(const Options &options)
@@ -3171,6 +3474,11 @@ void GUI::updateOptions(const Options &options)
 		HillShading::action(options.option); \
 		redraw = true; \
 	}
+#define SET_IMGMAP_OPTION(option, action) \
+	if (options.option != _options.option) { \
+		IMG::RasterTile::action(options.option); \
+		redraw = true; \
+	}
 
 	bool reload = false;
 	bool redraw = false;
@@ -3190,11 +3498,14 @@ void GUI::updateOptions(const Options &options)
 	SET_VIEW_OPTION(poiSize, setPOISize);
 	SET_VIEW_OPTION(poiColor, setPOIColor);
 	SET_VIEW_OPTION(pathAntiAliasing, useAntiAliasing);
-	SET_VIEW_OPTION(useOpenGL, useOpenGL);
 	SET_VIEW_OPTION(sliderColor, setMarkerColor);
 	SET_VIEW_OPTION(crosshairColor, setCrosshairColor);
 	SET_VIEW_OPTION(infoColor, setInfoColor);
 	SET_VIEW_OPTION(infoBackground, drawInfoBackground);
+	if (options.useOpenGL != _options.useOpenGL) {
+		if (_mapView->useOpenGL(options.useOpenGL))
+			fixWidgetOrder();
+	}
 
 	if (options.plugin != _options.plugin
 	  || options.pluginParams.value(options.plugin)
@@ -3259,7 +3570,7 @@ void GUI::updateOptions(const Options &options)
 		  : Authorization());
 
 	if (options.pixmapCache != _options.pixmapCache)
-		QPixmapCache::setCacheLimit(options.pixmapCache * 1024);
+		TileCache::setCacheLimit(options.pixmapCache * 1024);
 	if (options.demCache != _options.demCache)
 		DEM::setCacheSize(options.demCache * 1024);
 
@@ -3269,6 +3580,10 @@ void GUI::updateOptions(const Options &options)
 	SET_HS_OPTION(hillshadingAltitude, setAltitude);
 	SET_HS_OPTION(hillshadingZFactor, setZFactor);
 	SET_HS_OPTION(hillshadingLightening, setLightening);
+
+	SET_IMGMAP_OPTION(pathsDetail, setPathsDetail);
+	SET_IMGMAP_OPTION(pointsDetail, setPointsDetail);
+	SET_IMGMAP_OPTION(hillshadingDetail, setHillshadingDetail);
 
 	if (options.connectionTimeout != _options.connectionTimeout)
 		Downloader::setTimeout(options.connectionTimeout);
@@ -3296,7 +3611,7 @@ void GUI::loadInitialMaps(const QString &selected)
 {
 	// Load the maps
 	QString mapDir(ProgramPaths::mapDir());
-	if (mapDir.isNull())
+	if (mapDir.isEmpty())
 		return;
 
 	TreeNode<Map*> maps(MapList::loadMaps(mapDir, _mapView->inputProjection()));
@@ -3315,7 +3630,7 @@ void GUI::loadInitialPOIs(const QStringList &disabled)
 {
 	// Load the POI files
 	QString poiDir(ProgramPaths::poiDir());
-	if (poiDir.isNull())
+	if (poiDir.isEmpty())
 		return;
 
 	TreeNode<QString> poiFiles(_poi->loadDir(poiDir));
@@ -3337,23 +3652,6 @@ void GUI::loadInitialPOIs(const QStringList &disabled)
 	_selectAllPOIAction->setEnabled(!poiActions.isEmpty());
 	_unselectAllPOIAction->setEnabled(!poiActions.isEmpty());
 }
-
-#ifndef Q_OS_ANDROID
-void GUI::loadRecentFiles(const QStringList &files)
-{
-	QAction *before = _recentFilesEnd;
-
-	for (int i = 0; i < files.size(); i++) {
-		QAction *a = new QAction(files.at(i), _recentFilesActionGroup);
-		a->setData(files.at(i));
-		_recentFilesMenu->insertAction(before, a);
-		before = a;
-	}
-
-	if (!files.isEmpty())
-		_recentFilesMenu->setEnabled(true);
-}
-#endif // Q_OS_ANDROID
 
 QAction *GUI::mapAction(const QString &name)
 {
@@ -3432,3 +3730,20 @@ void GUI::logicalDotsPerInchChanged(qreal dpi)
 
 	_mapView->setDevicePixelRatio(devicePixelRatioF());
 }
+
+void GUI::fixWidgetOrder()
+{
+#ifdef Q_OS_ANDROID
+	_menuButton->raise();
+	_closeButton->raise();
+	_nextButton->raise();
+	_prevButton->raise();
+#endif // Q_OS_ANDROID
+}
+
+#ifdef Q_OS_ANDROID
+void GUI::showClose()
+{
+	_closeButton->setVisible(true);
+}
+#endif // Q_OS_ANDROID

@@ -4,12 +4,12 @@
 <context>
     <name>AuthenticationWidget</name>
     <message>
-        <location filename="../src/GUI/authenticationwidget.cpp" line="15"/>
+        <location filename="../src/GUI/authenticationwidget.cpp" line="17"/>
         <source>Username:</source>
         <translation>用户名：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/authenticationwidget.cpp" line="16"/>
+        <location filename="../src/GUI/authenticationwidget.cpp" line="18"/>
         <source>Password:</source>
         <translation>密码：</translation>
     </message>
@@ -68,129 +68,180 @@
     </message>
 </context>
 <context>
+    <name>Coros4Map</name>
+    <message>
+        <location filename="../src/map/coros4map.cpp" line="400"/>
+        <source>All</source>
+        <translation>所有图层</translation>
+    </message>
+    <message>
+        <location filename="../src/map/coros4map.cpp" line="400"/>
+        <source>Landscape</source>
+        <translation>地貌图</translation>
+    </message>
+    <message>
+        <location filename="../src/map/coros4map.cpp" line="400"/>
+        <source>Topo</source>
+        <translation>等高线图</translation>
+    </message>
+</context>
+<context>
+    <name>Coros5Map</name>
+    <message>
+        <location filename="../src/map/coros5map.cpp" line="473"/>
+        <source>All</source>
+        <translation>所有图层</translation>
+    </message>
+    <message>
+        <location filename="../src/map/coros5map.cpp" line="473"/>
+        <source>Landscape</source>
+        <translation>地貌图</translation>
+    </message>
+    <message>
+        <location filename="../src/map/coros5map.cpp" line="473"/>
+        <source>Topo</source>
+        <translation>等高线图</translation>
+    </message>
+</context>
+<context>
     <name>Data</name>
     <message>
-        <location filename="../src/data/data.cpp" line="234"/>
+        <location filename="../src/data/data.cpp" line="272"/>
         <source>Supported files</source>
         <translation>支持的文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="235"/>
+        <location filename="../src/data/data.cpp" line="274"/>
         <source>CSV files</source>
         <translation>CSV 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="236"/>
+        <location filename="../src/data/data.cpp" line="275"/>
         <source>CUP files</source>
         <translation>CUP 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="237"/>
+        <location filename="../src/data/data.cpp" line="276"/>
         <source>FIT files</source>
         <translation>FIT 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="238"/>
+        <location filename="../src/data/data.cpp" line="277"/>
         <source>GeoJSON files</source>
         <translation>GeoJSON 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="239"/>
+        <location filename="../src/data/data.cpp" line="279"/>
         <source>GPI files</source>
         <translation>GPI 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="240"/>
+        <location filename="../src/data/data.cpp" line="280"/>
         <source>GPX files</source>
         <translation>GPX 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="241"/>
+        <location filename="../src/data/data.cpp" line="281"/>
         <source>IGC files</source>
         <translation>IGC 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="242"/>
+        <location filename="../src/data/data.cpp" line="282"/>
         <source>ITN files</source>
         <translation>ITN 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="243"/>
+        <location filename="../src/data/data.cpp" line="283"/>
         <source>JPEG images</source>
         <translation>JPEG 图片</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="244"/>
+        <location filename="../src/data/data.cpp" line="284"/>
         <source>KML files</source>
         <translation>KML 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="245"/>
+        <location filename="../src/data/data.cpp" line="285"/>
         <source>LOC files</source>
         <translation>LOC 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="246"/>
+        <location filename="../src/data/data.cpp" line="286"/>
+        <source>MP4 videos</source>
+        <translation>MP4 视频</translation>
+    </message>
+    <message>
+        <location filename="../src/data/data.cpp" line="292"/>
+        <source>GPMF files</source>
+        <translation>GPMF 文件</translation>
+    </message>
+    <message>
+        <location filename="../src/data/data.cpp" line="287"/>
         <source>NMEA files</source>
         <translation>NMEA 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="247"/>
+        <location filename="../src/data/data.cpp" line="288"/>
         <source>ONmove files</source>
         <translation>ONmove 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="248"/>
+        <location filename="../src/data/data.cpp" line="289"/>
         <source>OV2 files</source>
         <translation>OV2 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="249"/>
+        <location filename="../src/data/data.cpp" line="290"/>
         <source>OziExplorer files</source>
         <translation>OziExplorer 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="250"/>
+        <location filename="../src/data/data.cpp" line="293"/>
         <source>SLF files</source>
         <translation>SLF 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="251"/>
+        <location filename="../src/data/data.cpp" line="294"/>
         <source>SML files</source>
         <translation>SML 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="252"/>
+        <location filename="../src/data/data.cpp" line="295"/>
+        <source>DJI SRT files</source>
+        <translation>DJI SRT 文件</translation>
+    </message>
+    <message>
+        <location filename="../src/data/data.cpp" line="296"/>
         <source>TCX files</source>
         <translation>TCX 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="253"/>
+        <location filename="../src/data/data.cpp" line="297"/>
         <source>70mai GPS log files</source>
         <translation>70迈 GPS 记录文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="254"/>
+        <location filename="../src/data/data.cpp" line="298"/>
         <source>VKX files</source>
         <translation>VKX 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="255"/>
+        <location filename="../src/data/data.cpp" line="299"/>
         <source>VTK files</source>
         <translation>VTK 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="256"/>
+        <location filename="../src/data/data.cpp" line="300"/>
         <source>TwoNav files</source>
         <translation>TwoNav 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="257"/>
+        <location filename="../src/data/data.cpp" line="302"/>
         <source>GPSDump files</source>
         <translation>GPSDump 文件</translation>
     </message>
     <message>
-        <location filename="../src/data/data.cpp" line="258"/>
+        <location filename="../src/data/data.cpp" line="303"/>
         <source>All files</source>
         <translation>所有文件</translation>
     </message>
@@ -198,12 +249,12 @@
 <context>
     <name>DirSelectWidget</name>
     <message>
-        <location filename="../src/GUI/dirselectwidget.cpp" line="18"/>
+        <location filename="../src/GUI/dirselectwidget.cpp" line="17"/>
         <source>System default</source>
         <translation>系统默认</translation>
     </message>
     <message>
-        <location filename="../src/GUI/dirselectwidget.cpp" line="40"/>
+        <location filename="../src/GUI/dirselectwidget.cpp" line="35"/>
         <source>Select directory</source>
         <translation>选择目录</translation>
     </message>
@@ -307,23 +358,23 @@
 <context>
     <name>FileSelectWidget</name>
     <message>
-        <location filename="../src/GUI/fileselectwidget.cpp" line="46"/>
-        <location filename="../src/GUI/fileselectwidget.cpp" line="51"/>
+        <location filename="../src/GUI/fileselectwidget.cpp" line="39"/>
+        <location filename="../src/GUI/fileselectwidget.cpp" line="44"/>
         <source>Select file</source>
         <translation>选择文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/fileselectwidget.cpp" line="61"/>
+        <location filename="../src/GUI/fileselectwidget.cpp" line="54"/>
         <source>No output file selected.</source>
         <translation>未选择输出文件。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/fileselectwidget.cpp" line="71"/>
+        <location filename="../src/GUI/fileselectwidget.cpp" line="64"/>
         <source>%1 is a directory.</source>
         <translation>%1 是一个目录。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/fileselectwidget.cpp" line="75"/>
+        <location filename="../src/GUI/fileselectwidget.cpp" line="68"/>
         <source>%1 is not writable.</source>
         <translation>%1 不可写。</translation>
     </message>
@@ -365,741 +416,768 @@
 <context>
     <name>GUI</name>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="200"/>
+        <location filename="../src/GUI/gui.cpp" line="209"/>
         <source>Quit</source>
         <translation>退出</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="208"/>
-        <location filename="../src/GUI/gui.cpp" line="981"/>
-        <location filename="../src/GUI/gui.cpp" line="999"/>
+        <location filename="../src/GUI/gui.cpp" line="217"/>
+        <location filename="../src/GUI/gui.cpp" line="1107"/>
+        <location filename="../src/GUI/gui.cpp" line="1125"/>
         <source>Paths</source>
         <translation>路径</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="212"/>
-        <location filename="../src/GUI/gui.cpp" line="941"/>
-        <location filename="../src/GUI/gui.cpp" line="942"/>
+        <location filename="../src/GUI/gui.cpp" line="221"/>
+        <location filename="../src/GUI/gui.cpp" line="1064"/>
+        <location filename="../src/GUI/gui.cpp" line="1065"/>
         <source>Keyboard controls</source>
         <translation>键盘控制</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="216"/>
-        <location filename="../src/GUI/gui.cpp" line="908"/>
+        <location filename="../src/GUI/gui.cpp" line="225"/>
+        <location filename="../src/GUI/gui.cpp" line="1031"/>
         <source>About GPXSee</source>
         <translation>关于 GPXSee</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="222"/>
+        <location filename="../src/GUI/gui.cpp" line="231"/>
         <source>Open...</source>
         <translation>打开...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="229"/>
+        <location filename="../src/GUI/gui.cpp" line="240"/>
         <source>Open directory...</source>
         <translation>打开目录...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="234"/>
+        <location filename="../src/GUI/gui.cpp" line="246"/>
+        <source>Browse directory...</source>
+        <translation>浏览目录…</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/gui.cpp" line="252"/>
         <source>Print...</source>
         <translation>打印...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="240"/>
+        <location filename="../src/GUI/gui.cpp" line="258"/>
         <source>Export to PDF...</source>
         <translation>导出为 PDF...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="247"/>
+        <location filename="../src/GUI/gui.cpp" line="267"/>
         <source>Export to PNG...</source>
         <translation>导出为 PNG...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="254"/>
+        <location filename="../src/GUI/gui.cpp" line="276"/>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="261"/>
+        <location filename="../src/GUI/gui.cpp" line="285"/>
         <source>Reload</source>
         <translation>重新加载</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="267"/>
+        <location filename="../src/GUI/gui.cpp" line="293"/>
         <source>Statistics...</source>
         <translation>统计...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="277"/>
+        <location filename="../src/GUI/gui.cpp" line="305"/>
         <source>Clear list</source>
         <translation>清空列表</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="289"/>
+        <location filename="../src/GUI/gui.cpp" line="317"/>
         <source>Load POI file...</source>
         <translation>载入 POI 文件...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="293"/>
+        <location filename="../src/GUI/gui.cpp" line="321"/>
         <source>Select all files</source>
         <translation>选择所有文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="298"/>
+        <location filename="../src/GUI/gui.cpp" line="326"/>
         <source>Unselect all files</source>
         <translation>取消选择所有文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="303"/>
+        <location filename="../src/GUI/gui.cpp" line="331"/>
         <source>Overlap POIs</source>
         <translation>叠加 POI</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="308"/>
+        <location filename="../src/GUI/gui.cpp" line="336"/>
         <source>Show POI icons</source>
         <translation>显示 POI 图标</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="313"/>
+        <location filename="../src/GUI/gui.cpp" line="341"/>
         <source>Show POI labels</source>
         <translation>显示 POI 标签</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="319"/>
+        <location filename="../src/GUI/gui.cpp" line="347"/>
         <source>Show POIs</source>
         <translation>显示 POI</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="331"/>
+        <location filename="../src/GUI/gui.cpp" line="361"/>
         <source>Show map</source>
         <translation>显示地图</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="340"/>
+        <location filename="../src/GUI/gui.cpp" line="372"/>
         <source>Load map...</source>
         <translation>载入地图...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="345"/>
+        <location filename="../src/GUI/gui.cpp" line="377"/>
         <source>Load map directory...</source>
         <translation>载入地图目录...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="348"/>
+        <location filename="../src/GUI/gui.cpp" line="380"/>
         <source>Clear tile cache</source>
         <translation>清除瓦片缓存</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="353"/>
-        <location filename="../src/GUI/gui.cpp" line="358"/>
-        <location filename="../src/GUI/gui.cpp" line="960"/>
+        <location filename="../src/GUI/gui.cpp" line="385"/>
+        <location filename="../src/GUI/gui.cpp" line="1083"/>
         <source>Next map</source>
         <translation>下一个地图</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="363"/>
+        <location filename="../src/GUI/gui.cpp" line="399"/>
         <source>Show cursor coordinates</source>
         <translation>显示光标的坐标</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="371"/>
-        <source>All</source>
-        <translation>所有图层</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/gui.cpp" line="375"/>
-        <source>Raster only</source>
-        <translation>仅栅格层</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/gui.cpp" line="379"/>
-        <source>Vector only</source>
-        <translation>仅矢量层</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/gui.cpp" line="386"/>
+        <location filename="../src/GUI/gui.cpp" line="413"/>
         <source>Show position</source>
         <translation>显示位置</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="392"/>
+        <location filename="../src/GUI/gui.cpp" line="425"/>
         <source>Follow position</source>
         <translation>跟随位置</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="397"/>
+        <location filename="../src/GUI/gui.cpp" line="430"/>
         <source>Show coordinates</source>
         <translation>显示坐标</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="403"/>
+        <location filename="../src/GUI/gui.cpp" line="436"/>
         <source>Show motion info</source>
         <translation>显示移动信息</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="410"/>
+        <location filename="../src/GUI/gui.cpp" line="443"/>
         <source>Show tracks</source>
-        <translation>显示航迹</translation>
+        <translation>显示轨迹</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="415"/>
+        <location filename="../src/GUI/gui.cpp" line="450"/>
         <source>Show routes</source>
-        <translation>显示航线</translation>
+        <translation>显示路线</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="420"/>
+        <location filename="../src/GUI/gui.cpp" line="457"/>
         <source>Show waypoints</source>
-        <translation>显示航点</translation>
+        <translation>显示标记点</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="426"/>
+        <location filename="../src/GUI/gui.cpp" line="465"/>
         <source>Show areas</source>
         <translation>显示区域</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="431"/>
+        <location filename="../src/GUI/gui.cpp" line="472"/>
         <source>Waypoint icons</source>
-        <translation>航点图标</translation>
+        <translation>标记点图标</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="436"/>
+        <location filename="../src/GUI/gui.cpp" line="477"/>
         <source>Waypoint labels</source>
-        <translation>航点标签</translation>
+        <translation>标记点标签</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="441"/>
+        <location filename="../src/GUI/gui.cpp" line="482"/>
         <source>Route waypoints</source>
-        <translation>航线航点</translation>
+        <translation>路线标记点</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="446"/>
+        <location filename="../src/GUI/gui.cpp" line="487"/>
+        <source>Track waypoints</source>
+        <translation>轨迹标记点</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/gui.cpp" line="492"/>
         <source>km/mi markers</source>
         <translation>km/mi 标记</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="451"/>
+        <location filename="../src/GUI/gui.cpp" line="497"/>
         <source>Legend</source>
-        <translation type="unfinished"></translation>
+        <translation>图例</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="459"/>
+        <location filename="../src/GUI/gui.cpp" line="505"/>
         <source>Do not show</source>
         <translation>不显示</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="463"/>
+        <location filename="../src/GUI/gui.cpp" line="509"/>
         <source>Marker only</source>
         <translation>仅标记</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="467"/>
+        <location filename="../src/GUI/gui.cpp" line="513"/>
         <source>Date/time</source>
         <translation>日期/时间</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="471"/>
+        <location filename="../src/GUI/gui.cpp" line="517"/>
         <source>Coordinates</source>
         <translation>坐标</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="475"/>
+        <location filename="../src/GUI/gui.cpp" line="521"/>
+        <source>Video preview</source>
+        <translation>视频预览</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/gui.cpp" line="526"/>
         <source>Use styles</source>
         <translation>使用样式</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="482"/>
+        <location filename="../src/GUI/gui.cpp" line="533"/>
         <source>Download data DEM</source>
         <translation>下载 DEM 数据</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="488"/>
+        <location filename="../src/GUI/gui.cpp" line="541"/>
         <source>Download map DEM</source>
         <translation>下载 DEM 地图</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="493"/>
+        <location filename="../src/GUI/gui.cpp" line="546"/>
         <source>Show local DEM tiles</source>
         <translation>显示本地 DEM 瓦片</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="496"/>
+        <location filename="../src/GUI/gui.cpp" line="549"/>
         <source>Show hillshading</source>
         <translation>显示山体阴影</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="504"/>
+        <location filename="../src/GUI/gui.cpp" line="561"/>
         <source>Show graphs</source>
         <translation>显示图表</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="512"/>
-        <location filename="../src/GUI/gui.cpp" line="1448"/>
-        <location filename="../src/GUI/gui.cpp" line="1508"/>
+        <location filename="../src/GUI/gui.cpp" line="571"/>
+        <location filename="../src/GUI/gui.cpp" line="1580"/>
+        <location filename="../src/GUI/gui.cpp" line="1640"/>
         <source>Distance</source>
         <translation>距离</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="519"/>
-        <location filename="../src/GUI/gui.cpp" line="770"/>
-        <location filename="../src/GUI/gui.cpp" line="1450"/>
-        <location filename="../src/GUI/gui.cpp" line="1510"/>
+        <location filename="../src/GUI/gui.cpp" line="578"/>
+        <location filename="../src/GUI/gui.cpp" line="886"/>
+        <location filename="../src/GUI/gui.cpp" line="1582"/>
+        <location filename="../src/GUI/gui.cpp" line="1642"/>
         <source>Time</source>
         <translation>时间</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="525"/>
+        <location filename="../src/GUI/gui.cpp" line="584"/>
         <source>Show grid</source>
         <translation>显示网格</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="530"/>
+        <location filename="../src/GUI/gui.cpp" line="589"/>
         <source>Show slider info</source>
         <translation>显示滑块信息</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="536"/>
+        <location filename="../src/GUI/gui.cpp" line="595"/>
         <source>Show tabs</source>
         <translation>显示选项卡</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="545"/>
+        <location filename="../src/GUI/gui.cpp" line="601"/>
+        <location filename="../src/GUI/gui.cpp" line="1086"/>
+        <source>Next graph tab</source>
+        <translation>下一个图表选项卡</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/gui.cpp" line="608"/>
+        <location filename="../src/GUI/gui.cpp" line="1088"/>
+        <source>Previous graph tab</source>
+        <translation>上一个图表选项卡</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/gui.cpp" line="618"/>
         <source>Show toolbars</source>
         <translation>显示工具栏</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="552"/>
+        <location filename="../src/GUI/gui.cpp" line="625"/>
         <source>Total time</source>
         <translation>总时长</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="557"/>
-        <location filename="../src/GUI/gui.cpp" line="1451"/>
-        <location filename="../src/GUI/gui.cpp" line="1512"/>
+        <location filename="../src/GUI/gui.cpp" line="630"/>
+        <location filename="../src/GUI/gui.cpp" line="1583"/>
+        <location filename="../src/GUI/gui.cpp" line="1644"/>
         <source>Moving time</source>
         <translation>移动时长</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="564"/>
+        <location filename="../src/GUI/gui.cpp" line="637"/>
         <source>Metric</source>
         <translation>公制</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="569"/>
+        <location filename="../src/GUI/gui.cpp" line="642"/>
         <source>Imperial</source>
         <translation>英制</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="575"/>
+        <location filename="../src/GUI/gui.cpp" line="648"/>
         <source>Nautical</source>
         <translation>航海</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="583"/>
+        <location filename="../src/GUI/gui.cpp" line="656"/>
         <source>Decimal degrees (DD)</source>
         <translation>小数度数 (DD)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="589"/>
+        <location filename="../src/GUI/gui.cpp" line="662"/>
         <source>Degrees and decimal minutes (DMM)</source>
         <translation>度、十进制分 (DMM)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="596"/>
+        <location filename="../src/GUI/gui.cpp" line="669"/>
         <source>Degrees, minutes, seconds (DMS)</source>
         <translation>度、分、秒 (DMS)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="603"/>
+        <location filename="../src/GUI/gui.cpp" line="676"/>
         <source>Fullscreen mode</source>
         <translation>全屏模式</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="610"/>
+        <location filename="../src/GUI/gui.cpp" line="683"/>
         <source>Options...</source>
         <translation>选项...</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="617"/>
+        <location filename="../src/GUI/gui.cpp" line="690"/>
         <source>Next</source>
         <translation>下一个</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="622"/>
+        <location filename="../src/GUI/gui.cpp" line="695"/>
         <source>Previous</source>
         <translation>上一个</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="627"/>
+        <location filename="../src/GUI/gui.cpp" line="700"/>
         <source>Last</source>
         <translation>最后一个</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="632"/>
+        <location filename="../src/GUI/gui.cpp" line="705"/>
         <source>First</source>
         <translation>第一个</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="667"/>
+        <location filename="../src/GUI/gui.cpp" line="745"/>
+        <location filename="../src/GUI/gui.cpp" line="747"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="670"/>
+        <location filename="../src/GUI/gui.cpp" line="751"/>
         <source>Open recent</source>
         <translation>最近打开文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="695"/>
+        <location filename="../src/GUI/gui.cpp" line="780"/>
+        <location filename="../src/GUI/gui.cpp" line="782"/>
         <source>&amp;Map</source>
         <translation>地图(&amp;M)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="701"/>
+        <location filename="../src/GUI/gui.cpp" line="789"/>
+        <source>Styles</source>
+        <translation>样式</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/gui.cpp" line="792"/>
         <source>Layers</source>
         <translation>图层</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="710"/>
+        <location filename="../src/GUI/gui.cpp" line="800"/>
+        <location filename="../src/GUI/gui.cpp" line="802"/>
         <source>&amp;Graph</source>
         <translation>图表(&amp;G)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="722"/>
+        <location filename="../src/GUI/gui.cpp" line="816"/>
+        <location filename="../src/GUI/gui.cpp" line="818"/>
         <source>&amp;Data</source>
         <translation>数据(&amp;D)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="728"/>
+        <location filename="../src/GUI/gui.cpp" line="826"/>
         <source>Position info</source>
         <translation>位置信息</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="742"/>
+        <location filename="../src/GUI/gui.cpp" line="843"/>
+        <location filename="../src/GUI/gui.cpp" line="845"/>
         <source>&amp;POI</source>
         <translation>POI(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="754"/>
+        <location filename="../src/GUI/gui.cpp" line="859"/>
+        <location filename="../src/GUI/gui.cpp" line="861"/>
         <source>DEM</source>
         <translation>DEM</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="762"/>
+        <location filename="../src/GUI/gui.cpp" line="871"/>
+        <location filename="../src/GUI/gui.cpp" line="873"/>
         <source>Position</source>
         <translation>位置</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="769"/>
+        <location filename="../src/GUI/gui.cpp" line="882"/>
+        <location filename="../src/GUI/gui.cpp" line="884"/>
         <source>&amp;Settings</source>
         <translation>设置(&amp;S)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="774"/>
+        <location filename="../src/GUI/gui.cpp" line="890"/>
         <source>Units</source>
         <translation>单位</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="779"/>
+        <location filename="../src/GUI/gui.cpp" line="895"/>
         <source>Coordinates format</source>
         <translation>坐标格式</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="792"/>
+        <location filename="../src/GUI/gui.cpp" line="909"/>
+        <location filename="../src/GUI/gui.cpp" line="911"/>
         <source>&amp;Help</source>
         <translation>帮助(&amp;H)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="819"/>
+        <location filename="../src/GUI/gui.cpp" line="938"/>
         <source>File</source>
         <translation>文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="829"/>
+        <location filename="../src/GUI/gui.cpp" line="948"/>
         <source>Show</source>
         <translation>显示</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="837"/>
+        <location filename="../src/GUI/gui.cpp" line="959"/>
         <source>Navigation</source>
         <translation>导航</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="910"/>
-        <location filename="../src/GUI/gui.cpp" line="918"/>
+        <location filename="../src/GUI/gui.cpp" line="1033"/>
+        <location filename="../src/GUI/gui.cpp" line="1041"/>
         <source>Version %1</source>
         <translation>版本 %1</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="913"/>
-        <location filename="../src/GUI/gui.cpp" line="922"/>
+        <location filename="../src/GUI/gui.cpp" line="1036"/>
+        <location filename="../src/GUI/gui.cpp" line="1045"/>
         <source>GPXSee is distributed under the terms of the GNU General Public License version 3. For more info about GPXSee visit the project homepage at %1.</source>
         <translation>GPXSee 依照《GNU 通用公共许可证 v3.0》之条款发布。有关 GPXSee 的详细信息，请访问项目主页 %1 。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="945"/>
+        <location filename="../src/GUI/gui.cpp" line="1068"/>
         <source>Next file</source>
         <translation>下一个文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="946"/>
+        <location filename="../src/GUI/gui.cpp" line="1069"/>
         <source>Previous file</source>
         <translation>上一个文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="948"/>
+        <location filename="../src/GUI/gui.cpp" line="1071"/>
         <source>First file</source>
         <translation>第一个文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="950"/>
+        <location filename="../src/GUI/gui.cpp" line="1073"/>
         <source>Last file</source>
         <translation>最后一个文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="951"/>
+        <location filename="../src/GUI/gui.cpp" line="1074"/>
         <source>Append file</source>
         <translation>追加文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="952"/>
+        <location filename="../src/GUI/gui.cpp" line="1075"/>
         <source>Next/Previous</source>
         <translation>下一个/上一个</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="954"/>
+        <location filename="../src/GUI/gui.cpp" line="1077"/>
         <source>Toggle graph type</source>
         <translation>切换图表类型</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="956"/>
+        <location filename="../src/GUI/gui.cpp" line="1079"/>
         <source>Toggle time type</source>
         <translation>切换时间类型</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="958"/>
+        <location filename="../src/GUI/gui.cpp" line="1081"/>
         <source>Toggle position info</source>
         <translation>切换位置信息</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="962"/>
+        <location filename="../src/GUI/gui.cpp" line="392"/>
+        <location filename="../src/GUI/gui.cpp" line="1085"/>
         <source>Previous map</source>
         <translation>上一个地图</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="963"/>
+        <location filename="../src/GUI/gui.cpp" line="1089"/>
         <source>Zoom in</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="965"/>
+        <location filename="../src/GUI/gui.cpp" line="1091"/>
         <source>Zoom out</source>
         <translation>缩小</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="967"/>
+        <location filename="../src/GUI/gui.cpp" line="1093"/>
         <source>Digital zoom</source>
         <translation>数字缩放</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="968"/>
+        <location filename="../src/GUI/gui.cpp" line="1094"/>
         <source>Zoom</source>
         <translation>缩放</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="969"/>
+        <location filename="../src/GUI/gui.cpp" line="1095"/>
         <source>Copy coordinates</source>
         <translation>复制坐标</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="970"/>
+        <location filename="../src/GUI/gui.cpp" line="1096"/>
         <source>Left Click</source>
         <translation>左击</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="984"/>
-        <location filename="../src/GUI/gui.cpp" line="1002"/>
+        <location filename="../src/GUI/gui.cpp" line="1110"/>
+        <location filename="../src/GUI/gui.cpp" line="1128"/>
         <source>Map directory:</source>
         <translation>地图目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="986"/>
-        <location filename="../src/GUI/gui.cpp" line="1004"/>
+        <location filename="../src/GUI/gui.cpp" line="1112"/>
+        <location filename="../src/GUI/gui.cpp" line="1130"/>
         <source>POI directory:</source>
         <translation>POI 目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="988"/>
-        <location filename="../src/GUI/gui.cpp" line="1006"/>
+        <location filename="../src/GUI/gui.cpp" line="1114"/>
+        <location filename="../src/GUI/gui.cpp" line="1132"/>
         <source>CRS directory:</source>
         <translation>CRS 目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="990"/>
-        <location filename="../src/GUI/gui.cpp" line="1008"/>
+        <location filename="../src/GUI/gui.cpp" line="1116"/>
+        <location filename="../src/GUI/gui.cpp" line="1134"/>
         <source>DEM directory:</source>
         <translation>DEM 目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="992"/>
-        <location filename="../src/GUI/gui.cpp" line="1010"/>
+        <location filename="../src/GUI/gui.cpp" line="1118"/>
+        <location filename="../src/GUI/gui.cpp" line="1136"/>
         <source>Styles directory:</source>
         <translation>样式目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="994"/>
-        <location filename="../src/GUI/gui.cpp" line="1012"/>
+        <location filename="../src/GUI/gui.cpp" line="1120"/>
+        <location filename="../src/GUI/gui.cpp" line="1138"/>
         <source>Symbols directory:</source>
         <translation>符号目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="996"/>
-        <location filename="../src/GUI/gui.cpp" line="1014"/>
+        <location filename="../src/GUI/gui.cpp" line="1122"/>
+        <location filename="../src/GUI/gui.cpp" line="1140"/>
         <source>Tile cache directory:</source>
         <translation>瓦片缓存目录：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1025"/>
-        <location filename="../src/GUI/gui.cpp" line="1028"/>
+        <location filename="../src/GUI/gui.cpp" line="1151"/>
+        <location filename="../src/GUI/gui.cpp" line="1154"/>
         <source>Open file</source>
         <translation>打开文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1060"/>
+        <location filename="../src/GUI/gui.cpp" line="1184"/>
+        <location filename="../src/GUI/gui.cpp" line="1197"/>
         <source>Open directory</source>
         <translation>打开目录</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1129"/>
+        <location filename="../src/GUI/gui.cpp" line="1261"/>
         <source>Error loading geo URI:</source>
         <translation>加载 geo URI 出错：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1167"/>
+        <location filename="../src/GUI/gui.cpp" line="1299"/>
         <source>Error loading data file:</source>
         <translation>加载数据文件出错：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1170"/>
-        <location filename="../src/GUI/gui.cpp" line="1286"/>
+        <location filename="../src/GUI/gui.cpp" line="1302"/>
+        <location filename="../src/GUI/gui.cpp" line="1418"/>
         <source>Line: %1</source>
         <translation>行：%1</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1135"/>
-        <location filename="../src/GUI/gui.cpp" line="1175"/>
-        <location filename="../src/GUI/gui.cpp" line="1868"/>
-        <location filename="../src/GUI/gui.cpp" line="1974"/>
+        <location filename="../src/GUI/gui.cpp" line="1267"/>
+        <location filename="../src/GUI/gui.cpp" line="1307"/>
+        <location filename="../src/GUI/gui.cpp" line="2000"/>
+        <location filename="../src/GUI/gui.cpp" line="2105"/>
         <source>Don&apos;t show again</source>
         <translation>不要再次显示</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1253"/>
-        <location filename="../src/GUI/gui.cpp" line="1256"/>
+        <location filename="../src/GUI/gui.cpp" line="1385"/>
+        <location filename="../src/GUI/gui.cpp" line="1388"/>
         <source>Open POI file</source>
         <translation>打开 POI 文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1283"/>
+        <location filename="../src/GUI/gui.cpp" line="1415"/>
         <source>Error loading POI file:</source>
         <translation>加载POI文件出错：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1430"/>
-        <location filename="../src/GUI/gui.cpp" line="1488"/>
+        <location filename="../src/GUI/gui.cpp" line="1562"/>
+        <location filename="../src/GUI/gui.cpp" line="1620"/>
         <source>Tracks</source>
-        <translation>航迹</translation>
+        <translation>轨迹</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1432"/>
-        <location filename="../src/GUI/gui.cpp" line="1490"/>
+        <location filename="../src/GUI/gui.cpp" line="1564"/>
+        <location filename="../src/GUI/gui.cpp" line="1622"/>
         <source>Routes</source>
-        <translation>航线</translation>
+        <translation>路线</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1434"/>
-        <location filename="../src/GUI/gui.cpp" line="1492"/>
+        <location filename="../src/GUI/gui.cpp" line="1566"/>
+        <location filename="../src/GUI/gui.cpp" line="1624"/>
         <source>Waypoints</source>
-        <translation>航点</translation>
+        <translation>标记点</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1436"/>
-        <location filename="../src/GUI/gui.cpp" line="1494"/>
+        <location filename="../src/GUI/gui.cpp" line="1568"/>
+        <location filename="../src/GUI/gui.cpp" line="1626"/>
         <source>Areas</source>
         <translation>区域</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1440"/>
-        <location filename="../src/GUI/gui.cpp" line="1442"/>
-        <location filename="../src/GUI/gui.cpp" line="1499"/>
-        <location filename="../src/GUI/gui.cpp" line="1501"/>
+        <location filename="../src/GUI/gui.cpp" line="1572"/>
+        <location filename="../src/GUI/gui.cpp" line="1574"/>
+        <location filename="../src/GUI/gui.cpp" line="1631"/>
+        <location filename="../src/GUI/gui.cpp" line="1633"/>
         <source>Date</source>
         <translation>日期</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1463"/>
-        <location filename="../src/GUI/gui.cpp" line="1466"/>
-        <location filename="../src/GUI/gui.cpp" line="1467"/>
+        <location filename="../src/GUI/gui.cpp" line="1595"/>
+        <location filename="../src/GUI/gui.cpp" line="1598"/>
+        <location filename="../src/GUI/gui.cpp" line="1599"/>
         <source>Statistics</source>
         <translation>统计</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1484"/>
+        <location filename="../src/GUI/gui.cpp" line="1616"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1807"/>
-        <location filename="../src/GUI/gui.cpp" line="1810"/>
+        <location filename="../src/GUI/gui.cpp" line="1939"/>
+        <location filename="../src/GUI/gui.cpp" line="1942"/>
         <source>Open map file</source>
         <translation>打开地图文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="1862"/>
-        <location filename="../src/GUI/gui.cpp" line="1925"/>
-        <location filename="../src/GUI/gui.cpp" line="1944"/>
-        <location filename="../src/GUI/gui.cpp" line="1968"/>
+        <location filename="../src/GUI/gui.cpp" line="1994"/>
+        <location filename="../src/GUI/gui.cpp" line="2056"/>
+        <location filename="../src/GUI/gui.cpp" line="2075"/>
+        <location filename="../src/GUI/gui.cpp" line="2099"/>
         <source>Error loading map:</source>
         <translation>加载地图出错：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="2008"/>
+        <location filename="../src/GUI/gui.cpp" line="2139"/>
         <source>Select map directory</source>
         <translation>选择地图目录</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="2036"/>
+        <location filename="../src/GUI/gui.cpp" line="2167"/>
         <source>Clear &quot;%1&quot; tile cache?</source>
         <translation>清除&quot;%1 &quot;瓦片缓存？</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="2056"/>
+        <location filename="../src/GUI/gui.cpp" line="2187"/>
         <source>DEM tiles download limit exceeded. If you really need data for such a huge area, download the files manually.</source>
         <translation>已超过 DEM 瓦片下载限额。如您确需大量数据，请手动下载。</translation>
     </message>
     <message numerus="yes">
-        <location filename="../src/GUI/gui.cpp" line="2059"/>
+        <location filename="../src/GUI/gui.cpp" line="2190"/>
         <source>Download %n DEM tiles?</source>
         <translation>
             <numerusform>下载 %n DEM 瓦片？</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="2072"/>
+        <location filename="../src/GUI/gui.cpp" line="2202"/>
         <source>Could not download all required DEM files.</source>
         <translation>无法下载所有需要的 DEM 文件。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="2089"/>
+        <location filename="../src/GUI/gui.cpp" line="2219"/>
         <source>No local DEM tiles found.</source>
         <translation>未找到本地 DEM 瓦片。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/gui.cpp" line="2100"/>
+        <location filename="../src/GUI/gui.cpp" line="2262"/>
         <source>No files loaded</source>
         <translation>没有加载文件</translation>
     </message>
     <message numerus="yes">
-        <location filename="../src/GUI/gui.cpp" line="2104"/>
+        <location filename="../src/GUI/gui.cpp" line="2266"/>
         <source>%n files</source>
         <translation>
             <numerusform>%n 文件</numerusform>
@@ -1277,6 +1355,24 @@
     </message>
 </context>
 <context>
+    <name>IMGMap</name>
+    <message>
+        <location filename="../src/map/imgmap.cpp" line="352"/>
+        <source>All</source>
+        <translation>所有图层</translation>
+    </message>
+    <message>
+        <location filename="../src/map/imgmap.cpp" line="352"/>
+        <source>Vector only</source>
+        <translation>仅矢量层</translation>
+    </message>
+    <message>
+        <location filename="../src/map/imgmap.cpp" line="352"/>
+        <source>Raster only</source>
+        <translation>仅栅格层</translation>
+    </message>
+</context>
+<context>
     <name>MapItem</name>
     <message>
         <location filename="../src/GUI/mapitem.cpp" line="80"/>
@@ -1292,107 +1388,117 @@
 <context>
     <name>MapList</name>
     <message>
-        <location filename="../src/map/maplist.cpp" line="158"/>
+        <location filename="../src/map/maplist.cpp" line="184"/>
         <source>Supported files</source>
         <translation>支持的文件</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="162"/>
+        <location filename="../src/map/maplist.cpp" line="188"/>
         <source>AlpineQuest maps</source>
         <translation>AlpineQuest 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="164"/>
+        <location filename="../src/map/maplist.cpp" line="193"/>
         <source>Garmin IMG maps</source>
         <translation>佳明 IMG 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="166"/>
+        <location filename="../src/map/maplist.cpp" line="195"/>
         <source>Garmin JNX maps</source>
         <translation>佳明 JNX 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="167"/>
+        <location filename="../src/map/maplist.cpp" line="196"/>
         <source>BSB nautical charts</source>
         <translation>BSB 海图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="163"/>
+        <location filename="../src/map/maplist.cpp" line="192"/>
         <source>GEMF maps</source>
         <translation>GEMF 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="160"/>
+        <location filename="../src/map/maplist.cpp" line="186"/>
         <source>Electronic Navigational Charts</source>
         <translation>电子航海图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="168"/>
+        <location filename="../src/map/maplist.cpp" line="190"/>
+        <source>COROS maps</source>
+        <translation>高驰地图</translation>
+    </message>
+    <message>
+        <location filename="../src/map/maplist.cpp" line="198"/>
         <source>KMZ maps</source>
         <translation>KMZ 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="169"/>
+        <location filename="../src/map/maplist.cpp" line="199"/>
         <source>Mapsforge maps</source>
         <translation>Mapsforge 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="170"/>
+        <location filename="../src/map/maplist.cpp" line="200"/>
         <source>OziExplorer maps</source>
         <translation>OziExplorer 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="171"/>
+        <location filename="../src/map/maplist.cpp" line="202"/>
         <source>MBTiles maps</source>
         <translation>MBTiles 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="172"/>
+        <location filename="../src/map/maplist.cpp" line="204"/>
         <source>Orux maps</source>
         <translation>Orux 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="173"/>
+        <location filename="../src/map/maplist.cpp" line="205"/>
+        <source>PMTiles maps</source>
+        <translation>PMTiles 地图</translation>
+    </message>
+    <message>
+        <location filename="../src/map/maplist.cpp" line="207"/>
         <source>QuickChart maps</source>
         <translation>QuickChart 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="174"/>
+        <location filename="../src/map/maplist.cpp" line="208"/>
         <source>TwoNav maps</source>
         <translation>TwoNav 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="175"/>
+        <location filename="../src/map/maplist.cpp" line="210"/>
         <source>Osmdroid SQLite maps</source>
         <translation>Osmdroid SQLite 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="176"/>
+        <location filename="../src/map/maplist.cpp" line="212"/>
         <source>Locus/OsmAnd/RMaps SQLite maps</source>
         <translation>Locus/OsmAnd/RMaps SQLite 地图</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="178"/>
+        <location filename="../src/map/maplist.cpp" line="214"/>
         <source>TrekBuddy maps/atlases</source>
         <translation>TrekBuddy 地图/地图集</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="180"/>
+        <location filename="../src/map/maplist.cpp" line="216"/>
         <source>GeoTIFF images</source>
         <translation>GeoTIFF 图像</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="181"/>
+        <location filename="../src/map/maplist.cpp" line="218"/>
         <source>World-file georeferenced images</source>
         <translation>World-file georeferenced 图像</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="183"/>
+        <location filename="../src/map/maplist.cpp" line="220"/>
         <source>Online map sources</source>
         <translation>在线地图源</translation>
     </message>
     <message>
-        <location filename="../src/map/maplist.cpp" line="184"/>
+        <location filename="../src/map/maplist.cpp" line="222"/>
         <source>All files</source>
         <translation>所有文件</translation>
     </message>
@@ -1426,679 +1532,647 @@
     </message>
 </context>
 <context>
+    <name>OnlineMap</name>
+    <message>
+        <location filename="../src/map/onlinemap.cpp" line="357"/>
+        <source>All</source>
+        <translation>所有图层</translation>
+    </message>
+    <message>
+        <location filename="../src/map/onlinemap.cpp" line="357"/>
+        <source>Basemap only</source>
+        <translation>仅底图</translation>
+    </message>
+</context>
+<context>
     <name>OptionsDialog</name>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="78"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="69"/>
         <source>Select the proper coordinate reference system (CRS) of maps without a CRS definition (JNX, KMZ and World file maps).</source>
         <translation>为没有CRS定义的地图（JNX、KMZ和世界文件地图）选择适合的坐标参考系（CRS）。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="81"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="72"/>
         <source>Select the desired projection of vector maps (IMG, Mapsforge and ENC maps). The projection must be valid for the whole map area.</source>
         <translation>选择所需的矢量地图投影（IMG、Mapsforge和ENC地图）。该投影必须对整个地图区域有效。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="86"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="77"/>
         <source>Standard</source>
         <translation>标准</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="91"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="82"/>
         <source>Non-HiDPI maps are loaded as HiDPI maps. The map is sharp but map objects are small/hard to read.</source>
         <translation>非HiDPI地图将作为HiDPI地图加载。地图显示将较清晰，但其中的对象可能极小以难以阅读。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="93"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="84"/>
         <source>Non-HiDPI maps are loaded such as they are. Map objects have the expected size but the map is blurry.</source>
         <translation>非HiDPI地图将按原样加载。地图对象将以预设大小显示，但地图会模糊。</translation>
     </message>
     <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="97"/>
         <location filename="../src/GUI/optionsdialog.cpp" line="103"/>
         <source>Input</source>
         <translation>输入</translation>
     </message>
     <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="100"/>
         <location filename="../src/GUI/optionsdialog.cpp" line="105"/>
         <source>Output</source>
         <translation>输出</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="112"/>
-        <source>Input:</source>
-        <translation>输入：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="115"/>
-        <source>Output:</source>
-        <translation>输出：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="136"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="163"/>
         <source>Projection</source>
         <translation>投影</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="137"/>
-        <source>HiDPI display mode</source>
-        <translation>HiDPI显示模式</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="147"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="154"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="160"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="228"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="235"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="273"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="639"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="175"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="182"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="188"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="269"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="276"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="313"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="670"/>
         <source>px</source>
         <translation>像素</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="171"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="275"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="199"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="315"/>
         <source>Use anti-aliasing</source>
         <translation>启用抗锯齿</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="177"/>
-        <source>Track width:</source>
-        <translation>航迹宽度：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="178"/>
-        <source>Track style:</source>
-        <translation>航迹样式：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="180"/>
-        <source>Route width:</source>
-        <translation>航线宽度：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="181"/>
-        <source>Route style:</source>
-        <translation>航线样式：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="183"/>
-        <source>Area border width:</source>
-        <translation>区域边框宽度：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="184"/>
-        <source>Area border style:</source>
-        <translation>区域边框样式：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="185"/>
-        <source>Area fill opacity:</source>
-        <translation>区域填充不透明度：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="187"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="210"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="219"/>
         <source>Base color:</source>
         <translation>基础颜色：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="188"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="211"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="220"/>
         <source>Palette shift:</source>
         <translation>调色板偏移：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="194"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="199"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="204"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="202"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="207"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="212"/>
         <source>Width:</source>
         <translation>宽度：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="195"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="200"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="205"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="203"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="208"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="213"/>
         <source>Style:</source>
         <translation>样式：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="196"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="240"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="251"/>
         <source>Tracks</source>
-        <translation>航迹</translation>
+        <translation>轨迹</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="201"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="243"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="253"/>
         <source>Routes</source>
-        <translation>航线</translation>
+        <translation>路线</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="207"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="246"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="255"/>
         <source>Areas</source>
         <translation>区域</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="243"/>
-        <source>Waypoint color:</source>
-        <translation>航点颜色：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="244"/>
-        <source>Waypoint size:</source>
-        <translation>航点大小：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="246"/>
-        <source>POI color:</source>
-        <translation>POI 颜色：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="247"/>
-        <source>POI size:</source>
-        <translation>POI 大小：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="251"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="256"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="282"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="285"/>
         <source>Color:</source>
         <translation>颜色：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="252"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="257"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="283"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="286"/>
         <source>Size:</source>
         <translation>大小：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="253"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="291"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="297"/>
         <source>Waypoints</source>
-        <translation>航点</translation>
+        <translation>标记点</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="258"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="294"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="299"/>
         <source>POIs</source>
         <translation>POI</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="281"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="287"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="319"/>
         <source>Line width:</source>
         <translation>线条宽度：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="282"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="288"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="320"/>
         <source>Slider color:</source>
         <translation>滑块颜色：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="309"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="339"/>
         <source>Info background</source>
         <translation>信息背景</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="313"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="343"/>
         <source>Background color:</source>
         <translation>背景颜色：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="315"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="345"/>
         <source>Crosshair color:</source>
         <translation>十字线颜色：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="316"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="346"/>
         <source>Info color:</source>
         <translation>信息颜色：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="326"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="356"/>
         <source>Paths</source>
         <translation>线</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="327"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="357"/>
         <source>Points</source>
         <translation>点</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="328"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="764"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="358"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="799"/>
         <source>Graphs</source>
         <translation>图表</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="329"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="359"/>
         <source>Map</source>
         <translation>地图</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="336"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="366"/>
         <source>Moving average window size</source>
         <translation>移动平均窗口大小</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="354"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="383"/>
         <source>Eliminate GPS outliers</source>
         <translation>消除 GPS 异常值</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="360"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="378"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="398"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="403"/>
         <source>Smoothing</source>
         <translation>平滑</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="361"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="371"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="495"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="387"/>
         <source>Elevation:</source>
         <translation>海拔：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="362"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="372"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="494"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="388"/>
         <source>Speed:</source>
         <translation>速度：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="363"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="373"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="389"/>
         <source>Heart rate:</source>
         <translation>心率：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="364"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="374"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="390"/>
         <source>Cadence:</source>
         <translation>踏频：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="365"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="375"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="391"/>
         <source>Power:</source>
         <translation>功率：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="388"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="412"/>
         <source>Detect pauses</source>
         <translation>检测暂停</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="391"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="415"/>
         <source>Automatic</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="392"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="446"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="416"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="476"/>
         <source>Custom</source>
         <translation>自定义</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="405"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="429"/>
         <source>mi/h</source>
         <translation>mi/h</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="408"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="432"/>
         <source>kn</source>
         <translation>kn</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="411"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="435"/>
         <source>km/h</source>
         <translation>km/h</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="415"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="791"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="439"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="826"/>
         <source>s</source>
         <translation>s</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="426"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="450"/>
         <source>Computed from distance/time</source>
         <translation>根据距离/时间计算</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="427"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="451"/>
         <source>Recorded by device</source>
         <translation>根据设备记录</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="432"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="459"/>
         <source>Show secondary speed</source>
         <translation>显示次要速度</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="435"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="462"/>
         <source>GPS data</source>
         <translation>GPS 数据</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="436"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="463"/>
         <source>DEM data</source>
         <translation>DEM 数据</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="441"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="471"/>
         <source>Show secondary elevation</source>
         <translation>显示次要海拔</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="444"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="474"/>
         <source>UTC</source>
         <translation>UTC</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="445"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="842"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="893"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="475"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="876"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="931"/>
         <source>System</source>
         <translation>系统</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="465"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="502"/>
         <source>Use segments</source>
         <translation>启用分段</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="496"/>
-        <source>Time zone:</source>
-        <translation>时区：</translation>
-    </message>
-    <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="510"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="534"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="545"/>
         <source>Speed</source>
         <translation>速度</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="515"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="537"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="547"/>
         <source>Elevation</source>
         <translation>海拔</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="521"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="540"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="549"/>
         <source>Time zone</source>
         <translation>时区</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="537"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="565"/>
         <source>Detection:</source>
         <translation>检测模式：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="538"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="566"/>
         <source>Minimal speed:</source>
         <translation>最小速度：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="539"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="567"/>
         <source>Minimal duration:</source>
         <translation>最短持续时间：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="550"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="580"/>
         <source>Sources</source>
         <translation>来源</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="551"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="581"/>
         <source>Filtering</source>
         <translation>过滤</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="552"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="582"/>
         <source>Pause detection</source>
         <translation>检测暂停</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="564"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="596"/>
         <source>mi</source>
         <translation>mi</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="567"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="599"/>
         <source>nmi</source>
         <translation>nmi</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="570"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="602"/>
         <source>km</source>
         <translation>km</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="574"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="606"/>
         <source>Radius:</source>
         <translation>半径：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="580"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="884"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="612"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="922"/>
         <source>POI</source>
         <translation>POI</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="597"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="629"/>
         <source>Use HTTP authentication</source>
         <translation>启用 HTTP 验证</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="603"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="635"/>
         <source>Use $lat and $lon for NYY/SYY and EXXX/WXXX in the URL.</source>
         <translation>在网址中使用$lat和$lon表示NYY/SYY和EXXX/WXXX。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="608"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="621"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="641"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="653"/>
         <source>URL:</source>
         <translation>网址：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="206"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="314"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="655"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="214"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="344"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="686"/>
         <source>Opacity:</source>
         <translation>不透明度：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="657"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="688"/>
         <source>Blur radius:</source>
         <translation>模糊半径：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="659"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="690"/>
         <source>Azimuth:</source>
         <translation>方位角：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="660"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="691"/>
         <source>Altitude:</source>
         <translation>海拔：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="661"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="692"/>
         <source>Z Factor:</source>
         <translation>Z 因子：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="666"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="696"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="697"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="729"/>
         <source>Source</source>
         <translation>源</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="667"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="698"/>
         <source>Hillshading</source>
         <translation>山体阴影</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="685"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="718"/>
         <source>Plugin:</source>
         <translation>插件：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="703"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="738"/>
         <source>WYSIWYG</source>
         <translation>所见即所得</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="85"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="704"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="76"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="739"/>
         <source>High-Resolution</source>
         <translation>高分辨率</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="656"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="152"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="155"/>
+        <source>IMG maps detail level</source>
+        <translation>IMG 地图细节等级</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="145"/>
+        <source>Paths:</source>
+        <translation>路径：</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="146"/>
+        <source>Points:</source>
+        <translation>点：</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="147"/>
+        <source>Hillshading:</source>
+        <translation>山体阴影：</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="164"/>
+        <source>HiDPI mode</source>
+        <translation>HiDPI 模式</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="165"/>
+        <source>Miscellaneous</source>
+        <translation>杂项</translation>
+    </message>
+    <message>
+        <location filename="../src/GUI/optionsdialog.cpp" line="687"/>
         <source>Lightening:</source>
         <translation>明亮度：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="709"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="744"/>
         <source>The printed area is approximately the display area. The map zoom level does not change.</source>
         <translation>打印区域近似于显示区域。地图的缩放级别不会改变。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="711"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="746"/>
         <source>The zoom level will be changed so that the whole content (tracks/waypoints) fits to the printed area and the map resolution is as close as possible to the print resolution.</source>
-        <translation>缩放级别将被改变以使整个内容（航迹/航点）适应打印区域，并且地图分辨率尽可能接近打印分辨率。</translation>
+        <translation>缩放级别将被改变以使整个内容（轨迹/标记点）适应打印区域，并且地图分辨率尽可能接近打印分辨率。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="727"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="762"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="729"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="764"/>
         <source>Date</source>
         <translation>日期</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="731"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="766"/>
         <source>Distance</source>
         <translation>距离</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="733"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="768"/>
         <source>Time</source>
         <translation>时间</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="735"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="770"/>
         <source>Moving time</source>
         <translation>移动时长</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="737"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="772"/>
         <source>Item count (&gt;1)</source>
         <translation>项目数(&gt;1)</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="752"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="787"/>
         <source>Separate graph page</source>
         <translation>单独图表页</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="762"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="797"/>
         <source>Print mode</source>
         <translation>打印模式</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="763"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="798"/>
         <source>Header</source>
         <translation>页眉</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="771"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="806"/>
         <source>Use OpenGL</source>
         <translation>启用 OpenGL</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="773"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="808"/>
         <source>Enable HTTP/2</source>
         <translation>启用 HTTP/2</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="779"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="785"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="814"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="820"/>
         <source>MB</source>
         <translation>MB</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="797"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="805"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="832"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="840"/>
         <source>Image cache size:</source>
         <translation>图像缓存大小：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="799"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="807"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="834"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="842"/>
         <source>Connection timeout:</source>
         <translation>连接超时：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="798"/>
-        <location filename="../src/GUI/optionsdialog.cpp" line="806"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="833"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="841"/>
         <source>DEM cache size:</source>
         <translation>DEM 缓存大小：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="826"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="860"/>
         <source>Select the initial paths of the file open dialogues. Leave the field empty for the system default.</source>
         <translation>为文件打开对话框设置初始路径。留空则为系统默认。</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="830"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="864"/>
         <source>Data:</source>
         <translation>数据：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="831"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="865"/>
         <source>Maps:</source>
         <translation>地图：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="832"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="866"/>
         <source>POI:</source>
         <translation>POI：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="843"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="877"/>
         <source>Initial paths</source>
         <translation>初始路径</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="879"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="917"/>
         <source>Appearance</source>
         <translation>外观</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="881"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="919"/>
         <source>Maps</source>
         <translation>地图</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="883"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="921"/>
         <source>Data</source>
         <translation>数据</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="886"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="924"/>
         <source>DEM</source>
         <translation>DEM</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="889"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="927"/>
         <source>Position</source>
         <translation>位置</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="891"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="929"/>
         <source>Print &amp; Export</source>
         <translation>打印 &amp; 导出</translation>
     </message>
     <message>
-        <location filename="../src/GUI/optionsdialog.cpp" line="926"/>
+        <location filename="../src/GUI/optionsdialog.cpp" line="961"/>
         <source>Options</source>
         <translation>选项</translation>
     </message>
@@ -2106,82 +2180,82 @@
 <context>
     <name>PDFExportDialog</name>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="28"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="30"/>
         <source>PDF files</source>
         <translation>PDF 文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="28"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="30"/>
         <source>All files</source>
         <translation>所有文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="56"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="58"/>
         <source>Portrait</source>
         <translation>纵向</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="57"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="59"/>
         <source>Landscape</source>
         <translation>横向</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="67"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="69"/>
         <source>cm</source>
         <translation>cm</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="67"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="69"/>
         <source>in</source>
         <translation>in</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="73"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="97"/>
         <source>Page Setup</source>
         <translation>页面设置</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="76"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="75"/>
         <source>Page size:</source>
         <translation>页面大小：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="77"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="76"/>
         <source>Resolution:</source>
         <translation>分辨率：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="78"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="77"/>
         <source>Orientation:</source>
         <translation>方向：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="79"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="78"/>
         <source>Margins:</source>
         <translation>边距：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="85"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="81"/>
         <source>File:</source>
         <translation>文件：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="92"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="99"/>
         <source>Output file</source>
         <translation>输出文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="99"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="86"/>
         <source>Export</source>
         <translation>导出</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="119"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="112"/>
         <source>Export to PDF</source>
         <translation>导出为 PDF</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pdfexportdialog.cpp" line="127"/>
+        <location filename="../src/GUI/pdfexportdialog.cpp" line="120"/>
         <source>Error</source>
         <translation>错误</translation>
     </message>
@@ -2189,29 +2263,29 @@
 <context>
     <name>PNGExportDialog</name>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="25"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="28"/>
         <source>PNG files</source>
         <translation>PNG 文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="25"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="28"/>
         <source>All files</source>
         <translation>所有文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="34"/>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="39"/>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="43"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="37"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="42"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="46"/>
         <source>px</source>
         <translation>像素</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="45"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="48"/>
         <source>Use anti-aliasing</source>
         <translation>启用抗锯齿</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="49"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="74"/>
         <source>Image Setup</source>
         <translation>图像设置</translation>
     </message>
@@ -2231,27 +2305,27 @@
         <translation>边距：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="61"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="58"/>
         <source>File:</source>
         <translation>文件：</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="68"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="76"/>
         <source>Output file</source>
         <translation>输出文件</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="75"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="63"/>
         <source>Export</source>
         <translation>导出</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="95"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="89"/>
         <source>Export to PNG</source>
         <translation>导出为 PNG</translation>
     </message>
     <message>
-        <location filename="../src/GUI/pngexportdialog.cpp" line="103"/>
+        <location filename="../src/GUI/pngexportdialog.cpp" line="97"/>
         <source>Error</source>
         <translation>错误</translation>
     </message>
@@ -2264,7 +2338,7 @@
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../src/GUI/areaitem.cpp" line="20"/>
+        <location filename="../src/GUI/areaitem.cpp" line="21"/>
         <source>Description</source>
         <translation>描述</translation>
     </message>
@@ -2576,47 +2650,47 @@
 <context>
     <name>TrackItem</name>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="15"/>
+        <location filename="../src/GUI/trackitem.cpp" line="14"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="17"/>
+        <location filename="../src/GUI/trackitem.cpp" line="16"/>
         <source>Description</source>
         <translation>描述</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="19"/>
+        <location filename="../src/GUI/trackitem.cpp" line="18"/>
         <source>Comment</source>
         <translation>评论</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="20"/>
+        <location filename="../src/GUI/trackitem.cpp" line="19"/>
         <source>Distance</source>
         <translation>距离</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="23"/>
+        <location filename="../src/GUI/trackitem.cpp" line="22"/>
         <source>Total time</source>
         <translation>总时长</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="25"/>
+        <location filename="../src/GUI/trackitem.cpp" line="24"/>
         <source>Moving time</source>
         <translation>移动时长</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="28"/>
+        <location filename="../src/GUI/trackitem.cpp" line="27"/>
         <source>Date</source>
         <translation>日期</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="40"/>
+        <location filename="../src/GUI/trackitem.cpp" line="39"/>
         <source>Links</source>
         <translation>链接</translation>
     </message>
     <message>
-        <location filename="../src/GUI/trackitem.cpp" line="46"/>
+        <location filename="../src/GUI/trackitem.cpp" line="45"/>
         <source>File</source>
         <translation>文件</translation>
     </message>
@@ -2624,7 +2698,7 @@
 <context>
     <name>WaypointItem</name>
     <message>
-        <location filename="../src/GUI/waypointitem.cpp" line="26"/>
+        <location filename="../src/GUI/waypointitem.cpp" line="25"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
@@ -2654,22 +2728,22 @@
         <translation>评论</translation>
     </message>
     <message>
-        <location filename="../src/GUI/waypointitem.cpp" line="50"/>
+        <location filename="../src/GUI/waypointitem.cpp" line="51"/>
         <source>Symbol</source>
         <translation>符号</translation>
     </message>
     <message>
-        <location filename="../src/GUI/waypointitem.cpp" line="55"/>
+        <location filename="../src/GUI/waypointitem.cpp" line="57"/>
         <source>Address</source>
         <translation>地址</translation>
     </message>
     <message>
-        <location filename="../src/GUI/waypointitem.cpp" line="58"/>
+        <location filename="../src/GUI/waypointitem.cpp" line="60"/>
         <source>Phone</source>
         <translation>电话</translation>
     </message>
     <message>
-        <location filename="../src/GUI/waypointitem.cpp" line="68"/>
+        <location filename="../src/GUI/waypointitem.cpp" line="71"/>
         <source>Links</source>
         <translation>链接</translation>
     </message>

@@ -14,6 +14,7 @@ class Map;
 class PathTickItem;
 class GraphItem;
 class MarkerItem;
+class VideoItem;
 
 class PathItem : public QObject, public GraphicsItem
 {
@@ -49,6 +50,8 @@ public:
 	void showMarker(bool show);
 	void showMarkerInfo(MarkerInfoItem::Type type);
 	void showTicks(bool show);
+	void showPoints(bool show);
+	void showVideo(bool show);
 
 	void setMarkerPosition(qreal pos);
 
@@ -93,9 +96,10 @@ private:
 	void updatePenStyle();
 	qreal width() const;
 	Qt::PenStyle penStyle() const;
-
-	qreal xInM() const;
+	void enableVideo(bool enable);
 	unsigned tickSize() const;
+
+	static qreal xInM();
 
 	Path _path;
 
@@ -104,6 +108,7 @@ private:
 	GraphItem *_graph;
 	MarkerItem *_marker;
 	MarkerInfoItem *_markerInfo;
+	VideoItem *_video;
 	QVector<PathTickItem*> _ticks;
 
 	QPen _pen;
@@ -115,6 +120,8 @@ private:
 	Qt::PenStyle _penStyle;
 	bool _showMarker;
 	bool _showTicks;
+	bool _showPoints;
+	bool _showVideo;
 	MarkerInfoItem::Type _markerInfoType;
 	qreal _markerDistance;
 	int _digitalZoom;

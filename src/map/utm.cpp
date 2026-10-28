@@ -4,12 +4,19 @@
 
 Conversion::Setup UTM::setup(int zone)
 {
-	return Conversion::Setup(0, (qAbs(zone) - 1)*6 - 180 + 3, 0.9996, 500000,
-	  zone < 0 ? 10000000 : 0, 0, 0);
+	int absZone = qAbs(zone);
+
+	return ((absZone > 0) && (absZone <= 60))
+	  ? Conversion::Setup(0, (absZone - 1)*6 - 180 + 3, 0.9996, 500000,
+		  zone < 0 ? 10000000 : 0, 0, 0)
+	  : Conversion::Setup();
 }
 
 int UTM::zone(const Coordinates &c)
 {
+	if (!c.isValid())
+		return 0;
+
 	int zone = int((c.lon() + 180)/6) + 1;
 
 	if (c.lat() >= 56.0 && c.lat() < 64.0 && c.lon() >= 3.0 && c.lon() < 12.0)

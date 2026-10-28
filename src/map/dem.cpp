@@ -1,34 +1,19 @@
-/*
-	WARNING: This code uses internal Qt API - the QZipReader class for reading
-	ZIP files - and things may break if Qt changes the API. For Qt5 this is not
-	a problem as we can "see the future" now and there are no changes in all
-	the supported Qt5 versions up to the last one (5.15). In Qt6 the class
-	might change or even disappear in the future, but this is very unlikely
-	as there were no changes for several years and The Qt Company's policy
-	is: "do not invest any resources into any desktop related stuff unless
-	absolutely necessary". There is an issue (QTBUG-3897) since the year 2009 to
-	include the ZIP reader into the public API, which aptly illustrates the
-	effort The Qt Company is willing to make about anything desktop related...
-*/
-
 #include <QtEndian>
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
 #include <QLocale>
-#include <private/qzipreader_p.h>
 #include "common/rectc.h"
+#include "common/zip.h"
 #include "dem.h"
 
-
-static unsigned int isqrt(unsigned int x)
+static unsigned int isqrt(size_t x)
 {
-	unsigned int l = 0;
-	unsigned int m;
-	unsigned int r = x + 1;
+	size_t l = 0;
+	size_t r = x + 1;
 
 	while (l != r - 1) {
-		m = (l + r) / 2;
+		size_t m = (l + r) / 2;
 
 		if (m * m <= x)
 			l = m;
@@ -36,7 +21,7 @@ static unsigned int isqrt(unsigned int x)
 			r = m;
 	}
 
-	return l;
+	return (unsigned int)l;
 }
 
 static double interpolate(double dx, double dy, double p0, double p1, double p2,
@@ -46,10 +31,10 @@ static double interpolate(double dx, double dy, double p0, double p1, double p2,
 	  + p2 * dy * (1.0 - dx) + p3 * dx * dy;
 }
 
-static double value(int col, int row, int samples, const QByteArray &data)
+static double value(int col, int row, int samples, const qint16 *data)
 {
-	int pos = ((samples - 1 - row) * samples + col) * 2;
-	qint16 val = qFromBigEndian(*((const qint16*)(data.constData() + pos)));
+	int pos = ((samples - 1 - row) * samples + col);
+	qint16 val = qFromBigEndian(*(data + pos));
 
 	return (val == -32768) ? NAN : val;
 }
@@ -57,7 +42,7 @@ static double value(int col, int row, int samples, const QByteArray &data)
 
 DEM::Entry::Entry(const QByteArray &data) : _data(data)
 {
-	_samples = isqrt(_data.size() / 2);
+	_samples = isqrt(_data.size() / sizeof(qint16));
 }
 
 QString DEM::Tile::latStr() const
@@ -106,15 +91,16 @@ double DEM::height(const Coordinates &c, const Entry *e)
 	if (!e->samples())
 		return NAN;
 
+	const qint16 *data = (const qint16*)(e->data().constData());
 	double lat = (c.lat() - floor(c.lat())) * (e->samples() - 1);
 	double lon = (c.lon() - floor(c.lon())) * (e->samples() - 1);
 	int row = (int)lat;
 	int col = (int)lon;
 
-	double p0 = value(col, row, e->samples(), e->data());
-	double p1 = value(col + 1, row, e->samples(), e->data());
-	double p2 = value(col, row + 1, e->samples(), e->data());
-	double p3 = value(col + 1, row + 1, e->samples(), e->data());
+	double p0 = value(col, row, e->samples(), data);
+	double p1 = value(col + 1, row, e->samples(), data);
+	double p2 = value(col, row + 1, e->samples(), data);
+	double p3 = value(col + 1, row + 1, e->samples(), data);
 
 	return interpolate(lon - col, lat - row, p0, p1, p2, p3);
 }
@@ -126,8 +112,13 @@ DEM::Entry *DEM::loadTile(const Tile &tile)
 	QString zipPath(path + ".zip");
 
 	if (QFileInfo::exists(zipPath)) {
-		QZipReader zip(zipPath, QIODevice::ReadOnly);
-		return new Entry(zip.fileData(fileName));
+		Zip zip(zipPath);
+		if (!zip.isValid()) {
+			qWarning("%s: %s", qUtf8Printable(zipPath),
+			  qUtf8Printable(zip.errorString()));
+			return new Entry();
+		} else
+			return new Entry(zip.file(fileName));
 	} else {
 		QFile file(path);
 		if (!file.open(QIODevice::ReadOnly)) {
@@ -148,7 +139,7 @@ double DEM::elevationLockFree(const Coordinates &c)
 	if (!e) {
 		e = loadTile(tile);
 		ele = height(c, e);
-		_data.insert(tile, e, e->data().size() / 1024);
+		_data.insert(tile, e, qMax(e->data().size() >> 10, 1));
 	} else
 		ele = height(c, e);
 
@@ -180,6 +171,28 @@ MatrixD DEM::elevation(const MatrixC &m)
 	_lock.unlock();
 
 	return ret;
+}
+
+bool DEM::elevation(const RectC &rect)
+{
+	if (_dir.isEmpty())
+		return false;
+
+	QDir dir(_dir);
+	int left = floor(rect.left());
+	int top = floor(rect.top());
+	int right = floor(rect.right());
+	int bottom = floor(rect.bottom());
+
+	for (int i = bottom; i <= top; i++) {
+		for (int j = left; j <= right; j++) {
+			QString path(dir.absoluteFilePath(Tile(j, i).fileName()));
+			if (QFileInfo::exists(path) || QFileInfo::exists(path + ".zip"))
+				return true;
+		}
+	}
+
+	return false;
 }
 
 QList<Area> DEM::tiles()

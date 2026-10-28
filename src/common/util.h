@@ -5,9 +5,16 @@
 #include <QImage>
 
 class QTemporaryDir;
+class QFile;
 
 #define ARRAY_SIZE(array) \
   (sizeof(array) / sizeof(array[0]))
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#define METATYPE(f) static_cast<QMetaType::Type>((f).type())
+#else // QT 6
+#define METATYPE(f) static_cast<QMetaType::Type>((f).metaType().id())
+#endif // QT 6
 
 namespace Util
 {
@@ -19,6 +26,10 @@ namespace Util
 	const QTemporaryDir &tempDir();
 	bool isSQLiteDB(const QString &path, QString &errorString);
 	QImage svg2img(const QString &path, qreal ratio);
+	QByteArray gunzip(const QByteArray &data);
+#ifdef Q_OS_ANDROID
+	QStringList listDirFiles(const QString &treeUri);
+#endif // Q_OS_ANDROID
 }
 
 #endif // UTIL_H

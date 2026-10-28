@@ -1,5 +1,7 @@
 #include <cctype>
 #include <cmath>
+#include <QtEndian>
+#include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QImageReader>
@@ -9,6 +11,11 @@
 #include <QJniEnvironment>
 #include <QJniObject>
 #endif // Q_OS_ANDROID
+#ifdef _MSC_VER
+#include <QtZlib/zlib.h>
+#else // _MSC_VER
+#include <zlib.h>
+#endif // _MSC_VER
 #include "util.h"
 
 #define SQLITE_DB_MAGIC "SQLite format 3"
@@ -188,3 +195,83 @@ QImage Util::svg2img(const QString &path, qreal ratio)
 
 	return img;
 }
+
+QByteArray Util::gunzip(const QByteArray &data)
+{
+	quint32 size = 0;
+	const quint8 *isp = (const quint8*)data.constData() + data.size()
+	  - sizeof(size);
+	for (quint32 i = 0; i < sizeof(size); i++)
+		size |= ((quint32)*(isp + i)) << (i * 8);
+
+	QByteArray uba;
+	uba.resize(size);
+
+	z_stream strm;
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+	strm.avail_in = data.size();
+	strm.next_in = (Bytef*)data.constData();
+	strm.avail_out = uba.size();
+	strm.next_out = (Bytef*)uba.data();
+
+	if (inflateInit2(&strm, MAX_WBITS + 16) != Z_OK)
+		return QByteArray();
+	int ret = inflate(&strm, Z_NO_FLUSH);
+	(void)inflateEnd(&strm);
+
+	return (ret == Z_STREAM_END) ? uba : QByteArray();
+}
+
+#ifdef Q_OS_ANDROID
+QStringList Util::listDirFiles(const QString &treeUri)
+{
+	QStringList result;
+
+	if (treeUri.isEmpty())
+		return result;
+
+	QJniEnvironment env;
+	QJniObject uri(QJniObject::fromString(treeUri));
+
+	QJniObject context = QNativeInterface::QAndroidApplication::context();
+	if (!context.isValid()) {
+		env->ExceptionClear();
+		return result;
+	}
+
+	QJniObject files = QJniObject::callStaticObjectMethod(
+		"org/gpxsee/gpxsee/FileUtils",
+		"listDir",
+		"(Landroid/content/Context;Ljava/lang/String;)[Ljava/lang/String;",
+		context.object<jstring>(),
+		uri.object<jstring>()
+	);
+
+	if (!files.isValid())
+		return result;
+
+	jobjectArray arr = reinterpret_cast<jobjectArray>(files.object<jobjectArray>());
+	if (!arr)
+		return result;
+
+	jsize len = env->GetArrayLength(arr);
+	result.reserve(len);
+	for (jsize i = 0; i < len; ++i) {
+		jstring s = (jstring)env->GetObjectArrayElement(arr, i);
+		if (!s)
+			continue;
+
+		const char *utf = env->GetStringUTFChars(s, 0);
+		if (utf) {
+			result.append(QString::fromUtf8(utf));
+			env->ReleaseStringUTFChars(s, utf);
+		}
+
+		env->DeleteLocalRef(s);
+	}
+
+	return result;
+}
+#endif

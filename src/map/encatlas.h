@@ -4,12 +4,12 @@
 #include <QMap>
 #include <QMutex>
 #include "common/range.h"
+#include "ENC/iso8211.h"
+#include "ENC/atlasdata.h"
+#include "ENC/style_enc.h"
 #include "map.h"
 #include "projection.h"
 #include "transform.h"
-#include "ENC/iso8211.h"
-#include "ENC/atlasdata.h"
-#include "ENC/style.h"
 
 class ENCJob;
 class QDir;
@@ -41,7 +41,7 @@ public:
 	void draw(QPainter *painter, const QRectF &rect, Flags flags);
 
 	void load(const Projection &in, const Projection &out, qreal deviceRatio,
-	  bool hidpi);
+	  bool hidpi, bool hillShading, int style, int layer);
 	void unload();
 
 	bool isValid() const {return _valid;}
@@ -66,6 +66,8 @@ private:
 		RiverBerthing = 9
 	};
 
+	typedef QMap<IntendedUsage, ENC::AtlasData*> AtlasMap;
+
 	Transform transform(int zoom) const;
 	void updateTransform();
 	bool isRunning(int zoom, const QPoint &xy) const;
@@ -87,7 +89,7 @@ private:
 	Projection _projection;
 	Transform _transform;
 	qreal _tileRatio;
-	QMap<IntendedUsage, ENC::AtlasData*> _data;
+	AtlasMap _data;
 	ENC::Style *_style;
 	ENC::MapCache _cache;
 	QMutex _cacheLock;

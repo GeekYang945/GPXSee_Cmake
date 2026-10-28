@@ -1,12 +1,12 @@
 #include <QPainter>
-#include <QPixmapCache>
 #include "common/range.h"
 #include "common/wgs84.h"
-#include "ENC/mapdata.h"
-#include "ENC/style.h"
+#include "ENC/mapdata_enc.h"
+#include "ENC/style_enc.h"
 #include "rectd.h"
 #include "pcs.h"
 #include "encjob.h"
+#include "tilecache.h"
 #include "encmap.h"
 
 
@@ -110,18 +110,19 @@ bool ENCMap::processRecord(const ISO8211::Record &record,
 
 	const ISO8211::Field &f = record.at(1);
 	quint32 tag = f.tag();
+	const QVector<QVariant> &e = f.data().at(0);
 
 	if (tag == VRID) {
 		rv.append(record);
 	} else if (tag == DSID) {
-		if (f.data().at(0).size() < 5)
+		if (e.size() < 5)
 			return false;
-		dsnm = f.data().at(0).at(4).toByteArray();
+		dsnm = e.at(4).toByteArray();
 	} else if (tag == DSPM) {
 		bool ok;
-		if (f.data().at(0).size() < 11)
+		if (e.size() < 11)
 			return false;
-		comf = f.data().at(0).at(10).toUInt(&ok);
+		comf = e.at(10).toUInt(&ok);
 		if (!ok)
 			return false;
 	}
@@ -183,10 +184,13 @@ ENCMap::~ENCMap()
 }
 
 void ENCMap::load(const Projection &in, const Projection &out,
-  qreal deviceRatio, bool hidpi)
+  qreal deviceRatio, bool hidpi, bool hillShading, int style, int layer)
 {
 	Q_UNUSED(in);
 	Q_UNUSED(hidpi);
+	Q_UNUSED(hillShading);
+	Q_UNUSED(style);
+	Q_UNUSED(layer);
 
 	_tileRatio = deviceRatio;
 	_projection = out;
@@ -195,7 +199,7 @@ void ENCMap::load(const Projection &in, const Projection &out,
 	Q_ASSERT(!_style);
 	_style = new Style(deviceRatio);
 
-	QPixmapCache::clear();
+	TileCache::clear();
 }
 
 void ENCMap::unload()
@@ -309,7 +313,8 @@ void ENCMap::jobFinished(ENCJob *job)
 	for (int i = 0; i < tiles.size(); i++) {
 		const ENC::RasterTile &mt = tiles.at(i);
 		if (!mt.pixmap().isNull())
-			QPixmapCache::insert(key(mt.zoom(), mt.xy()), mt.pixmap());
+			TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+			  new QPixmap(mt.pixmap()));
 	}
 
 	removeJob(job);
@@ -337,19 +342,17 @@ void ENCMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 	QSizeF s(rect.right() - tl.x(), rect.bottom() - tl.y());
 	int width = ceil(s.width() / TILE_SIZE);
 	int height = ceil(s.height() / TILE_SIZE);
-
 	QList<RasterTile> tiles;
 
 	for (int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
 			QPoint ttl(tl.x() + i * TILE_SIZE, tl.y() + j * TILE_SIZE);
-			if (isRunning(_zoom, ttl))
-				continue;
+			TileCache::Key key(this, _zoom, ttl);
+			const QPixmap *pm = TileCache::object(key);
 
-			QPixmap pm;
-			if (QPixmapCache::find(key(_zoom, ttl), &pm))
-				painter->drawPixmap(ttl, pm);
-			else
+			if (pm)
+				painter->drawPixmap(ttl, *pm);
+			else if (!isRunning(_zoom, ttl))
 				tiles.append(RasterTile(_projection, _transform, _style, _data,
 				  _zoom, _zooms, QRect(ttl, QSize(TILE_SIZE, TILE_SIZE)),
 				  _tileRatio));
@@ -365,7 +368,8 @@ void ENCMap::draw(QPainter *painter, const QRectF &rect, Flags flags)
 				const RasterTile &mt = tiles.at(i);
 				const QPixmap &pm = mt.pixmap();
 				painter->drawPixmap(mt.xy(), pm);
-				QPixmapCache::insert(key(mt.zoom(), mt.xy()), pm);
+				TileCache::insert(TileCache::Key(this, mt.zoom(), mt.xy()),
+				  new QPixmap(pm));
 			}
 		} else
 			runJob(new ENCJob(tiles));
